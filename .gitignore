@@ -1,0 +1,34 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ruff_cache/
+.pytest_cache/
+.workbuddy/
+=
+
+# 归档数据：本次公开仓库通过 Git LFS 保留，克隆后可直接运行。
+#
+# ⚠️ 用 `data/*` 而不是 `data/`：后者会连带排除 `data/reference/`，
+# 而参考数据（名称 / 上市日表，152 KB）是**每次筛选都要读**的，
+# 缺了它不会报错，只会让筛选**悄悄筛出零只票**。
+# gitignore 的规则是「父目录被排除后，子文件无法用 `!` 重新包含」——
+# 所以必须先把排除粒度放到目录的**下一层**。
+data/*
+!data/
+!data/market/
+!data/market/daily.parquet
+!data/reference/
+!data/reference/*.parquet
+!data/reference/*.csv
+!data/reports/
+!data/reports/**
+logs/
+*.duckdb
+*.duckdb.wal
+!data/archive.duckdb
+
+# 日志与临时探针
+*.log
+pip-install.log
+.probe_*.py

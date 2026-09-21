@@ -1,0 +1,72 @@
+[paths]
+archive_db = "data/archive.duckdb"
+logs_dir = "logs"
+reports_dir = "data/reports"
+
+[http]
+# 东财风控：串行 + 最小间隔 + 随机抖动。批量任务把 min_interval_seconds 调大更稳。
+min_interval_seconds = 1.2
+jitter_seconds = 0.4
+retries = 3
+backoff_seconds = 2.0
+timeout_seconds = 15.0
+
+[backfill]
+# 仅用于对应归档表为空时的首次初始化起点；已有数据会自动从最后归档日之后续抓。
+themes_start = "2024-09-01"
+# 数据源可回溯的安全初始化起点；日常运行不需要手动填写回补区间。
+dragon_tiger_start = "2024-09-01"
+# 官方两融的首次初始化起点；已有归档会自动追平到最新行情日。
+margin_start = "2026-07-01"
+
+[market]
+# 本项目自己的日线归档（sync-bars 一次性引导后自己维护）。
+daily_parquet = "data/market/daily.parquet"
+
+# ⚠️ 名称 / 上市日表 —— **必须是本项目自己的副本**，不要指回量化项目的目录。
+# 它每次筛选都会被读取（ST 剔除、次新筛选、以及展示用的名称），
+# 指过去就等于让每日任务依赖另一个项目存在。
+# 上游若挪走/改名，症状不是报错而是**筛不出任何票**（`listed_days` 整列缺失），
+# 属于典型的"静默失效"。刷新用 `scripts/refresh_reference.py`。
+instrument_parquet = "data/reference/instrument_master.parquet"
+
+# 个股行业快照：页面/报告展示和行业横截面评分；运行时只读本地文件。
+# 刷新：.venv\Scripts\python.exe scripts\refresh_industry.py
+industry_csv = "data/reference/industry_master.csv"
+
+# 引导源：仅 `sync-bars` 一次性使用（复制行情原始数据，不共享任何模型/参数/结论）。
+# 日更走 `bars.py` 抓腾讯，**不读这个路径** ⇒ 上游挪走也不影响每日任务。
+# 本项目自己的 daily.parquet 一旦建立，这个路径就只在重建归档时才需要。
+source_parquet = "data/reference/source_daily.parquet"
+# 「924 以来涨幅」的分母基准日（不晚于该日的最后一个交易日）。
+since_924 = "2024-09-24"
+# 滚动窗口（交易日数）：250 日位置分位需要 250 根，留缓冲。
+window = 300
+
+[fundamentals]
+# BaoStock 估值 / 财务数据同步。结果写入项目内 archive.duckdb，推荐只读本地归档。
+enabled = true
+# 仅作为基本面归档的首次参考日期；首次同步默认先建立当前快照，后续按交易日增量。
+start_date = "2024-09-24"
+# 当前财报覆盖到该期时，后续启动自动跳过重复抓取；新报告期出现后自动刷新。
+financial_refresh_days = 45
+# BaoStock 财务请求的独立连接数；免费接口建议保持 2-4，网络受限时可改为 1。
+workers = 4
+# 最近 5 个财报期：用于营收同比、增速加速度和连续增长计算。
+history_periods = 5
+
+[rank]
+# ⚠️ 排序权重是**政策参数**，不是拟合结果（方案 §四.3：排序不用 ML，透明加权）。
+# ⚠️ 只允许**方向性**因子（industry / growth / quality / valuation / momentum / risk
+#    / theme / capital / liquidity）。
+#    位置类因子（close_position_* / dist_to_52w_high）**禁止**进入排序，
+#    这是「低位只做筛选、不做排序加分」的机械保证 —— 写了会直接 raise。
+industry = 0.20
+growth = 0.18
+quality = 0.15
+valuation = 0.15
+momentum = 0.15
+risk = 0.08
+theme = 0.02
+capital = 0.02
+liquidity = 0.05

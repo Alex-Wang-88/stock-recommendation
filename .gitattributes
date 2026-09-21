@@ -1,0 +1,4 @@
+# GitHub 普通 Git 对单文件 100MB 有限制；项目日线和 DuckDB 归档通过 Git LFS 发布。
+data/market/daily.parquet filter=lfs diff=lfs merge=lfs -text
+data/reference/source_daily.parquet filter=lfs diff=lfs merge=lfs -text
+data/archive.duckdb filter=lfs diff=lfs merge=lfs -text
