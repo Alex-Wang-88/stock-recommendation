@@ -111,7 +111,7 @@ def _public_kline_bars(
     market_path: Path,
     recommendations: list[dict[str, object]],
     as_of: str | None,
-    window: int = 60,
+    window: int = 120,
 ) -> dict[str, list[list[object]]]:
     """Read a small, recent OHLC window for only the displayed candidates."""
     if not as_of or not market_path.is_file() or not recommendations:

@@ -12,6 +12,11 @@ function number(value, digits = 2) {
   return parsed.toLocaleString("zh-CN", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
+function scoreOutOf100(value) {
+  const parsed = numericValue(value);
+  return Number.isFinite(parsed) ? `${number(parsed * 100, 1)} / 100` : "—";
+}
+
 function price(value) {
   const parsed = numericValue(value);
   return Number.isFinite(parsed) ? `¥${numberFormat.format(parsed)}` : "—";
@@ -82,7 +87,7 @@ function renderCandidate(item, rank, selected) {
   const button = makeNode("button", `candidate-row${selected ? " selected" : ""}`);
   button.type = "button";
   if (selected) button.setAttribute("aria-current", "true");
-  button.setAttribute("aria-label", `${item.name || "未命名"} ${item.symbol || ""}，${item.operation_signal || "未标注"}`);
+  button.setAttribute("aria-label", `${item.name || "未命名"} ${item.symbol || ""}，综合得分 ${scoreOutOf100(item.score)}，${item.operation_signal || "未标注"}`);
 
   const identity = makeNode("span", "candidate-identity");
   identity.append(
@@ -91,7 +96,8 @@ function renderCandidate(item, rank, selected) {
     makeNode("span", "candidate-symbol", item.symbol || ""),
   );
   const signal = makeNode("span", `candidate-signal ${signalClass(item.operation_signal)}`, item.operation_signal || "未标注");
-  const score = makeNode("span", "candidate-score", number(item.score, 3));
+  const score = makeNode("span", "candidate-score", number(numericValue(item.score) * 100, 1));
+  score.title = "综合得分，满分 100 分";
   const ret = makeNode("span", `candidate-return${numericValue(item.ret_20) < 0 ? " negative" : ""}`, percent(item.ret_20));
   button.append(identity, signal, score, ret);
   button.addEventListener("click", () => {
@@ -127,18 +133,19 @@ function svgNode(tag, attributes = {}, textValue = "") {
 function renderCandlestickChart(item) {
   const section = makeNode("section", "detail-chart-section");
   const sourceBars = Array.isArray(item.bars) ? item.bars : [];
-  const bars = sourceBars.map((row) => {
+  const history = sourceBars.map((row) => {
     if (!Array.isArray(row) || row.length < 5) return null;
     const [date, open, high, low, close, volume] = row;
     const values = [open, high, low, close].map((value) => value == null ? Number.NaN : Number(value));
     if (!values.every(Number.isFinite)) return null;
     return { date: String(date || ""), open: values[0], high: values[1], low: values[2], close: values[3], volume };
   }).filter(Boolean);
+  const bars = history.slice(-60);
 
   const heading = makeNode("div", "detail-chart-heading");
   heading.append(makeNode("strong", "detail-chart-title", "日线走势"));
   const latestDate = bars.length ? bars[bars.length - 1].date : "";
-  heading.append(makeNode("span", "detail-chart-range", bars.length ? `近 ${bars.length} 个交易日 · 截至 ${latestDate}` : "日线数据暂不可用"));
+  heading.append(makeNode("span", "detail-chart-range", bars.length ? `近 ${bars.length} 日 · 均线基于 ${history.length} 日 · 截至 ${latestDate}` : "日线数据暂不可用"));
 
   section.append(heading);
   if (!bars.length) {
@@ -151,8 +158,28 @@ function renderCandlestickChart(item) {
   const margin = { left: 60, right: 14, top: 18, bottom: 27 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
-  let minPrice = Math.min(...bars.map((bar) => bar.low));
-  let maxPrice = Math.max(...bars.map((bar) => bar.high));
+  const maPeriods = [5, 10, 20, 60];
+  const movingAverages = new Map(maPeriods.map((period) => [period, []]));
+  const movingTotals = new Map(maPeriods.map((period) => [period, 0]));
+  history.forEach((bar, index) => {
+    for (const period of maPeriods) {
+      let total = movingTotals.get(period) + bar.close;
+      if (index >= period) total -= history[index - period].close;
+      movingTotals.set(period, total);
+      movingAverages.get(period).push(index + 1 >= period ? total / period : Number.NaN);
+    }
+  });
+  const visibleStart = history.length - bars.length;
+  const visibleMovingAverages = maPeriods.flatMap((period) =>
+    movingAverages.get(period).slice(visibleStart).filter(Number.isFinite),
+  );
+  const priceBounds = [
+    ...bars.map((bar) => bar.low),
+    ...bars.map((bar) => bar.high),
+    ...visibleMovingAverages,
+  ];
+  let minPrice = Math.min(...priceBounds);
+  let maxPrice = Math.max(...priceBounds);
   const spread = Math.max(maxPrice - minPrice, Math.abs(maxPrice) * 0.02, 0.02);
   minPrice -= spread * 0.04;
   maxPrice += spread * 0.04;
@@ -164,7 +191,7 @@ function renderCandlestickChart(item) {
     class: "detail-candlestick-chart",
     viewBox: `0 0 ${width} ${height}`,
     role: "img",
-    "aria-label": `${item.name || "股票"} ${item.symbol || ""} 最近 ${bars.length} 个交易日日线 K 线和 MA20 均线`,
+    "aria-label": `${item.name || "股票"} ${item.symbol || ""} 最近 ${bars.length} 个交易日日线 K 线和 MA5、MA10、MA20、MA60 均线`,
     preserveAspectRatio: "none",
   });
   svg.append(svgNode("title", {}, `${item.name || "股票"} ${item.symbol || ""} 日线 K 线`));
@@ -188,8 +215,7 @@ function renderCandlestickChart(item) {
     }, value.toFixed(2)));
   }
 
-  const movingAveragePoints = [];
-  let movingAverageTotal = 0;
+  const maPoints = new Map(maPeriods.map((period) => [period, []]));
   bars.forEach((bar, index) => {
     const x = margin.left + (index + 0.5) * step;
     const openY = yPosition(bar.open);
@@ -213,12 +239,22 @@ function renderCandlestickChart(item) {
     }));
     svg.append(group);
 
-    movingAverageTotal += bar.close;
-    if (index >= 20) movingAverageTotal -= bars[index - 20].close;
-    const period = Math.min(index + 1, 20);
-    movingAveragePoints.push(`${x.toFixed(2)},${yPosition(movingAverageTotal / period).toFixed(2)}`);
+    for (const period of maPeriods) {
+      const average = movingAverages.get(period)[visibleStart + index];
+      if (Number.isFinite(average)) {
+        maPoints.get(period).push(`${x.toFixed(2)},${yPosition(average).toFixed(2)}`);
+      }
+    }
   });
-  svg.append(svgNode("polyline", { class: "chart-ma20-line", points: movingAveragePoints.join(" ") }));
+  for (const period of maPeriods) {
+    const points = maPoints.get(period);
+    const lineClass = `chart-ma-line chart-ma-${period}`;
+    if (points.length >= 2) svg.append(svgNode("polyline", { class: lineClass, points: points.join(" ") }));
+    else if (points.length === 1) {
+      const [cx, cy] = points[0].split(",");
+      svg.append(svgNode("circle", { class: lineClass, cx, cy, r: 2.4 }));
+    }
+  }
   svg.append(svgNode("text", {
     class: "chart-axis-label",
     x: margin.left,
@@ -233,7 +269,12 @@ function renderCandlestickChart(item) {
   }, bars[bars.length - 1].date));
 
   const chartLegend = makeNode("div", "detail-chart-legend");
-  for (const [label, swatchClass] of [["阳线", "chart-legend-up"], ["阴线", "chart-legend-down"], ["MA20", "chart-legend-ma"]]) {
+  const legendItems = [
+    ["阳线", "chart-legend-up"],
+    ["阴线", "chart-legend-down"],
+    ...maPeriods.map((period) => [`MA${period}`, `chart-legend-ma-${period}`]),
+  ];
+  for (const [label, swatchClass] of legendItems) {
     const legendItem = makeNode("span", "chart-legend-item");
     legendItem.append(makeNode("i", swatchClass), makeNode("span", "", label));
     chartLegend.append(legendItem);
@@ -259,7 +300,7 @@ function renderStockDetail(item, rank) {
 
   const stats = makeNode("div", "detail-stats");
   addDetailStat(stats, "收盘价", price(item.close));
-  addDetailStat(stats, "综合分", number(item.score, 3));
+  addDetailStat(stats, "综合得分", scoreOutOf100(item.score));
   addDetailStat(stats, "权重覆盖", item.score_coverage == null ? "—" : percent(item.score_coverage, 0));
   addDetailStat(stats, "近 20 日", percent(item.ret_20));
 

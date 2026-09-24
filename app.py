@@ -199,7 +199,7 @@ def build_local_screen(config: AppConfig, preset_name: str):
 @st.cache_data(show_spinner=False)
 def load_symbol_bars(path: str, symbol: str, end: str) -> pd.DataFrame:
     with MarketStore(path) as store:
-        return store.symbol_bars(symbol, end=end, window=60)
+        return store.symbol_bars(symbol, end=end, window=120)
 
 
 def format_number(value: object, digits: int = 2) -> str:
@@ -212,6 +212,12 @@ def format_pct(value: object, digits: int = 1) -> str:
     if value is None or pd.isna(value):
         return "—"
     return f"{float(value) * 100:.{digits}f}%"
+
+
+def format_score_100(value: object) -> str:
+    if value is None or pd.isna(value):
+        return "—"
+    return f"{float(value) * 100:.1f} / 100"
 
 
 def format_money(value: object) -> str:
@@ -244,8 +250,8 @@ def contribution_table(row: pd.Series, weights: dict[str, float]) -> pd.DataFram
             {
                 "类别": CATEGORY_LABELS.get(category, category),
                 "类别权重": f"{weight / total:.0%}",
-                "类别分位": format_number(score, 3) if available else "缺失",
-                "对综合分贡献": format_number(float(score) * weight / total, 3)
+                "类别得分/100": format_number(float(score) * 100, 1) if available else "缺失",
+                "综合分贡献": format_number(float(score) * weight / total * 100, 1)
                 if available
                 else "未参与",
                 "状态": "已参与" if available else "缺失，已重归一",
@@ -341,8 +347,24 @@ def render_candlestick_chart(bars: pd.DataFrame, symbol: str, name: str) -> None
     margin_left, margin_right, margin_top, margin_bottom = 62, 16, 18, 36
     plot_width = width - margin_left - margin_right
     plot_height = height - margin_top - margin_bottom
-    low = float(data["low"].min())
-    high = float(data["high"].max())
+    ma_periods = (5, 10, 20, 60)
+    ma_colors = {5: "#f59e0b", 10: "#a78bfa", 20: "#60a5fa", 60: "#22d3ee"}
+    moving_averages = {
+        period: data["close"].rolling(period, min_periods=period).mean().tail(60).reset_index(drop=True)
+        for period in ma_periods
+    }
+    visible = data.tail(60).reset_index(drop=True)
+    ma_values = [
+        float(value)
+        for series in moving_averages.values()
+        for value in series
+        if not pd.isna(value)
+    ]
+    low = float(visible["low"].min())
+    high = float(visible["high"].max())
+    if ma_values:
+        low = min(low, min(ma_values))
+        high = max(high, max(ma_values))
     spread = max(high - low, max(abs(high), 1.0) * 0.02)
     low -= spread * 0.04
     high += spread * 0.04
@@ -350,12 +372,12 @@ def render_candlestick_chart(bars: pd.DataFrame, symbol: str, name: str) -> None
     def y_pos(value: float) -> float:
         return margin_top + (high - value) / (high - low) * plot_height
 
-    count = len(data)
+    count = len(visible)
     step = plot_width / max(count, 1)
     candle_width = min(7.0, max(2.4, step * 0.62))
     svg: list[str] = [
         f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="{escape(name)} '
-        f'{escape(symbol)} 最近日线K线和20日均线" xmlns="http://www.w3.org/2000/svg">',
+        f'{escape(symbol)} 近60日K线及MA5、MA10、MA20、MA60" xmlns="http://www.w3.org/2000/svg">',
         '<rect width="100%" height="100%" rx="12" fill="#0e1223"/>',
     ]
     for tick in range(4):
@@ -371,9 +393,8 @@ def render_candlestick_chart(bars: pd.DataFrame, symbol: str, name: str) -> None
             f'{value:.2f}</text>'
         )
 
-    ma20 = data["close"].rolling(20, min_periods=1).mean()
-    ma_points: list[str] = []
-    for index, record in enumerate(data.itertuples(index=False)):
+    ma_points: dict[int, list[str]] = {period: [] for period in ma_periods}
+    for index, record in enumerate(visible.itertuples(index=False)):
         x = margin_left + (index + 0.5) * step
         top, bottom = y_pos(float(record.high)), y_pos(float(record.low))
         opening, closing = y_pos(float(record.open)), y_pos(float(record.close))
@@ -388,20 +409,37 @@ def render_candlestick_chart(bars: pd.DataFrame, symbol: str, name: str) -> None
             f'<rect x="{x-candle_width/2:.1f}" y="{body_y:.1f}" '
             f'width="{candle_width:.1f}" height="{body_h:.1f}" fill="{color}"/>'
         )
-        ma_points.append(f"{x:.1f},{y_pos(float(ma20.iloc[index])):.1f}")
-    svg.append(
-        f'<polyline points="{" ".join(ma_points)}" fill="none" stroke="#60a5fa" '
-        'stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>'
-    )
-    first_day = pd.Timestamp(data.iloc[0]["trade_date"]).strftime("%Y-%m-%d")
-    last_day = pd.Timestamp(data.iloc[-1]["trade_date"]).strftime("%Y-%m-%d")
+        for period in ma_periods:
+            average = moving_averages[period].iloc[index]
+            if not pd.isna(average):
+                ma_points[period].append(f"{x:.1f},{y_pos(float(average)):.1f}")
+    for period in ma_periods:
+        points = ma_points[period]
+        if len(points) >= 2:
+            svg.append(
+                f'<polyline points="{" ".join(points)}" fill="none" stroke="{ma_colors[period]}" '
+                'stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>'
+            )
+        elif points:
+            x, y = points[0].split(",")
+            svg.append(f'<circle cx="{x}" cy="{y}" r="2.3" fill="{ma_colors[period]}"/>')
+    first_day = pd.Timestamp(visible.iloc[0]["trade_date"]).strftime("%Y-%m-%d")
+    last_day = pd.Timestamp(visible.iloc[-1]["trade_date"]).strftime("%Y-%m-%d")
+    for index, period in enumerate(ma_periods):
+        legend_x = width - 258 + index * 59
+        svg.append(
+            f'<line x1="{legend_x}" y1="14" x2="{legend_x + 10}" y2="14" '
+            f'stroke="{ma_colors[period]}" stroke-width="2"/>'
+        )
+        svg.append(
+            f'<text x="{legend_x + 13}" y="18" fill="#94a3b8" font-size="10">MA{period}</text>'
+        )
     svg.extend(
         [
             f'<text x="{margin_left}" y="{height-10}" fill="#94a3b8" '
             f'font-size="11">{first_day}</text>',
             f'<text x="{width-margin_right}" y="{height-10}" text-anchor="end" '
             f'fill="#94a3b8" font-size="11">{last_day}</text>',
-            '<text x="550" y="16" fill="#60a5fa" font-size="11">— MA20</text>',
             "</svg>",
         ]
     )
@@ -423,7 +461,7 @@ def render_stock_detail(row: pd.Series, result, config: AppConfig, rank: int) ->
     targets = f"{format_number(row.get('target_1'))} / {format_number(row.get('target_2'))}"
     detail_stats = [
         ("收盘价", format_number(row.get("close"))),
-        ("综合分", format_number(row.get("score"), 3)),
+        ("综合得分", format_score_100(row.get("score"))),
         ("权重覆盖", format_pct(row.get("score_coverage"), 0)),
         ("20日收益", format_pct(row.get("ret_20"))),
         ("操作信号", signal),
@@ -570,7 +608,7 @@ def render_stock_cards(result, config: AppConfig) -> None:
                     for _, row in visible.iterrows()
                 ],
                 "信号": visible["operation_signal"].tolist(),
-                "评分": pd.to_numeric(visible["score"], errors="coerce").tolist(),
+                "评分/100": (pd.to_numeric(visible["score"], errors="coerce") * 100).tolist(),
                 "20日": (pd.to_numeric(visible["ret_20"], errors="coerce") * 100).tolist(),
             }
         )
@@ -588,7 +626,7 @@ def render_stock_cards(result, config: AppConfig) -> None:
             column_config={
                 "候选": st.column_config.TextColumn("候选", width="medium"),
                 "信号": st.column_config.TextColumn("信号", width="small"),
-                "评分": st.column_config.NumberColumn("评分", format="%.3f", width="small"),
+                "评分/100": st.column_config.NumberColumn("评分/100", format="%.1f", width="small"),
                 "20日": st.column_config.NumberColumn("20日", format="%.1f%%", width="small"),
             },
         )
