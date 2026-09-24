@@ -1,6 +1,9 @@
 name: Daily stock data sync
 
 on:
+  push:
+    branches:
+      - main
   schedule:
     # 18:00 China Standard Time (UTC+8), Monday through Friday.
     - cron: "0 10 * * 1-5"
@@ -14,6 +17,8 @@ on:
 permissions:
   actions: write
   contents: read
+  id-token: write
+  pages: write
 
 concurrency:
   group: stock-recommendation-daily-sync
@@ -23,6 +28,9 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    environment:
+      name: github-pages
+      url: ${{ steps.pages-deployment.outputs.page_url }}
     env:
       TZ: Asia/Shanghai
       STATE_CACHE_KEY: stock-state-v1-${{ github.run_id }}-${{ github.run_attempt }}
@@ -120,6 +128,7 @@ jobs:
           fi
 
       - name: Restore runtime state into the workspace
+        id: restore-runtime-state
         shell: bash
         run: |
           set -euo pipefail
@@ -137,7 +146,7 @@ jobs:
 
       - name: Run the daily rule-based sync
         id: daily-job
-        if: ${{ github.event.inputs.restore_snapshot_key == '' }}
+        if: ${{ github.event_name != 'push' && github.event.inputs.restore_snapshot_key == '' }}
         shell: bash
         run: |
           set +e
@@ -162,7 +171,7 @@ jobs:
           fi
 
       - name: Save this run as a seven-day recovery point
-        if: always() && hashFiles('runtime-state/data/archive.duckdb', 'runtime-state/data/market/daily.parquet') != ''
+        if: always() && github.event_name != 'push' && hashFiles('runtime-state/data/archive.duckdb', 'runtime-state/data/market/daily.parquet') != ''
         uses: actions/cache/save@v6
         with:
           path: runtime-state
@@ -170,7 +179,7 @@ jobs:
 
       - name: Delete older latest-state artifacts
         id: prune-artifacts
-        if: always() && hashFiles('runtime-state/data/archive.duckdb', 'runtime-state/data/market/daily.parquet') != ''
+        if: always() && github.event_name != 'push' && hashFiles('runtime-state/data/archive.duckdb', 'runtime-state/data/market/daily.parquet') != ''
         uses: actions/github-script@v9
         with:
           script: |
@@ -189,7 +198,7 @@ jobs:
             }
 
       - name: Update the latest complete state artifact
-        if: always() && steps.prune-artifacts.outcome == 'success' && hashFiles('runtime-state/data/archive.duckdb', 'runtime-state/data/market/daily.parquet') != ''
+        if: always() && github.event_name != 'push' && steps.prune-artifacts.outcome == 'success' && hashFiles('runtime-state/data/archive.duckdb', 'runtime-state/data/market/daily.parquet') != ''
         uses: actions/upload-artifact@v7
         with:
           name: stock-state-latest
@@ -206,6 +215,7 @@ jobs:
           DAILY_EXIT_CODE: ${{ steps.daily-job.outputs.exit_code }}
           RESTORE_SNAPSHOT_KEY: ${{ github.event.inputs.restore_snapshot_key || '' }}
           STATE_CACHE_KEY: ${{ env.STATE_CACHE_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           {
             echo "## State snapshot"
@@ -214,14 +224,37 @@ jobs:
             if [[ -n "$RESTORE_SNAPSHOT_KEY" ]]; then
               echo "- Restored cache key: `$RESTORE_SNAPSHOT_KEY`"
               echo "- Mode: restore only; daily sync was not run."
+            elif [[ "$EVENT_NAME" == "push" ]]; then
+              echo "- Mode: published the latest saved state; daily sync was not run."
             else
               echo "- Daily sync exit code: `${DAILY_EXIT_CODE:-unavailable}`"
             fi
             echo "- The runtime snapshot excludes the one-time source Parquet files."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Build the public recommendation site
+        id: build-public-site
+        if: always() && steps.restore-runtime-state.outcome == 'success'
+        shell: bash
+        run: python scripts/build_public_site.py --data-dir data --source-dir site --output-dir _site
+
+      - name: Configure GitHub Pages
+        if: steps.build-public-site.outcome == 'success'
+        uses: actions/configure-pages@v5
+
+      - name: Upload the public site artifact
+        if: steps.build-public-site.outcome == 'success'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - name: Deploy the public recommendation site
+        id: pages-deployment
+        if: steps.build-public-site.outcome == 'success'
+        uses: actions/deploy-pages@v4
+
       - name: Report daily sync failure
-        if: always() && github.event.inputs.restore_snapshot_key == '' && steps.daily-job.outputs.exit_code != '0'
+        if: always() && github.event_name != 'push' && github.event.inputs.restore_snapshot_key == '' && steps.daily-job.outputs.exit_code != '0'
         shell: bash
         env:
           DAILY_EXIT_CODE: ${{ steps.daily-job.outputs.exit_code }}

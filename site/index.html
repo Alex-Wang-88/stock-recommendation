@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="每日收盘后生成的 A 股规则筛选候选清单，展示数据时点、入场区间参考和前向验证进度。"
+    />
+    <title>每日股票候选 · A 股规则筛选</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="每日股票候选首页">
+        <span class="brand-mark" aria-hidden="true">SR</span>
+        <span>
+          <strong>市场观察</strong>
+          <small>规则筛选 · A 股</small>
+        </span>
+      </a>
+      <nav class="top-nav" aria-label="页面导航">
+        <a href="#recommendations">候选清单</a>
+        <a href="#validation">前向验证</a>
+        <a href="https://github.com/Alex-Wang-88/stock-recommendation" target="_blank" rel="noreferrer">项目说明</a>
+      </nav>
+    </header>
+
+    <main id="main-content" class="page-shell">
+      <section class="hero" aria-labelledby="page-title">
+        <div class="hero-copy">
+          <p class="eyebrow">DAILY CLOSE SNAPSHOT</p>
+          <h1 id="page-title">每日股票候选</h1>
+          <p class="hero-description">
+            基于已归档行情与财务数据的确定性规则筛选。公开展示每个交易日的候选、数据时点和验证进度。
+          </p>
+        </div>
+        <div class="schedule-card">
+          <span class="status-dot" aria-hidden="true"></span>
+          <div>
+            <strong>云端每日更新</strong>
+            <span>工作日约 18:00 · 北京时间</span>
+          </div>
+          <button id="reload-button" class="secondary-button" type="button" aria-label="重新载入最新快照">重新载入</button>
+        </div>
+      </section>
+
+      <section class="summary-grid" aria-label="本期快照摘要">
+        <article class="summary-card">
+          <span class="summary-label">行情数据截至</span>
+          <strong id="as-of-value" class="summary-value">载入中</strong>
+          <span class="summary-footnote">最近一个完整交易日</span>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label">当前展示候选</span>
+          <strong id="candidate-count" class="summary-value">—</strong>
+          <span class="summary-footnote" id="pool-count">按当前筛选规则排序</span>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label">策略指纹</span>
+          <strong id="spec-hash" class="summary-value hash-value">—</strong>
+          <span class="summary-footnote">规则相同才放在同一验证组</span>
+        </article>
+        <article class="summary-card summary-card-updated">
+          <span class="summary-label">快照生成时间</span>
+          <strong id="updated-at" class="summary-value">—</strong>
+          <span class="summary-footnote">北京时间；上游数据可能延迟</span>
+        </article>
+      </section>
+
+      <section id="data-notes" class="data-notes" aria-labelledby="notes-title" hidden>
+        <div class="notes-heading">
+          <span class="notes-mark" aria-hidden="true">!</span>
+          <h2 id="notes-title">数据备注</h2>
+        </div>
+        <ul id="notes-list"></ul>
+      </section>
+
+      <section id="recommendations" class="content-section" aria-labelledby="recommendations-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">SCREENED CANDIDATES</p>
+            <h2 id="recommendations-title">候选清单</h2>
+            <p class="section-description">分数用于本策略内部排序；买入区间、回落价和目标价是历史数据推导的观察参考。</p>
+          </div>
+          <span id="visible-count" class="count-chip" aria-live="polite">载入中</span>
+        </div>
+
+        <div class="filter-bar" role="search">
+          <label class="search-field">
+            <span>搜索股票</span>
+            <input id="search-input" type="search" placeholder="输入代码、名称或行业" autocomplete="off" />
+          </label>
+          <label class="select-field">
+            <span>操作参考</span>
+            <select id="signal-filter">
+              <option value="">全部状态</option>
+              <option value="今天可分批">今天可分批</option>
+              <option value="等回落再买">等回落再买</option>
+              <option value="暂缓，先确认">暂缓，先确认</option>
+            </select>
+          </label>
+          <label class="select-field sort-field">
+            <span>排序方式</span>
+            <select id="sort-select">
+              <option value="rank">策略排名</option>
+              <option value="score">综合分数</option>
+              <option value="ret20">近 20 日收益</option>
+            </select>
+          </label>
+        </div>
+
+        <p id="load-error" class="load-error" role="alert" hidden></p>
+        <div id="recommendation-list" class="recommendation-grid" aria-live="polite" aria-busy="true">
+          <p class="loading-message">正在读取最新推荐快照…</p>
+        </div>
+      </section>
+
+      <section id="validation" class="content-section validation-section" aria-labelledby="validation-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">FORWARD RECORD</p>
+            <h2 id="validation-title">前向验证</h2>
+            <p class="section-description">只统计当时真实生成并冻结的推荐记录。持有期未走完的样本会继续等待，不按零收益计算。</p>
+          </div>
+        </div>
+        <div id="evaluation-list" class="evaluation-grid">
+          <p class="loading-message">正在读取验证进度…</p>
+        </div>
+        <p class="validation-footnote">历史验证结果不代表未来收益；样本量较少时，超额收益可能只是随机波动。</p>
+      </section>
+
+      <section class="method-note" aria-labelledby="method-title">
+        <div>
+          <p class="eyebrow">HOW TO READ THIS PAGE</p>
+          <h2 id="method-title">阅读说明</h2>
+        </div>
+        <p>
+          页面展示的是公开数据上的规则筛选结果，不是自动交易服务。收盘价是数据基准；买入区间、回落触发、逻辑失效和目标价仅供研究参考，不构成买卖指令或收益承诺。
+        </p>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>仅供研究与信息展示，不构成投资建议。股票投资有风险，决策请独立判断。</p>
+      <a href="https://github.com/Alex-Wang-88/stock-recommendation" target="_blank" rel="noreferrer">查看开源规则与数据流程</a>
+    </footer>
+  </body>
+</html>
