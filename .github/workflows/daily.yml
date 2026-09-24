@@ -2,8 +2,8 @@ name: Daily stock data sync
 
 on:
   schedule:
-    # 16:00 China Standard Time (UTC+8), Monday through Friday.
-    - cron: "0 8 * * 1-5"
+    # 18:00 China Standard Time (UTC+8), Monday through Friday.
+    - cron: "0 10 * * 1-5"
   workflow_dispatch:
     inputs:
       restore_snapshot_key:
