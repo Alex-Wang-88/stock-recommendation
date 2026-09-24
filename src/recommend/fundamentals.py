@@ -519,6 +519,7 @@ def sync_baostock(
     workers: int = 4,
     history_periods: int = 5,
     progress: Progress | None = None,
+    sync_run_id: str | None = None,
 ) -> FundamentalSyncResult:
     """同步当前交易日估值和最近若干期已披露财报。
 
@@ -541,6 +542,7 @@ def sync_baostock(
             result.rows,
             "FAILED" if result.warning else "OK",
             result.summary(),
+            sync_run_id,
         )
         return result
 

@@ -9,11 +9,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 import pandas as pd
 
+from .announcements import sync_public_announcements
 from .archive import (
     ArchiveStore,
     BackfillResult,
@@ -22,13 +23,14 @@ from .archive import (
     backfill_themes,
     snapshot_all,
 )
-from .bars import advance_bars
+from .bars import advance_bars, local_now, symbols_for_refresh
 from .config import AppConfig
 from .context import ScreenContext
-from .forward import append_record, build_record, evaluate_and_persist
+from .forward import append_record, build_record, evaluate_and_persist, spec_fingerprint
 from .fundamentals import sync_baostock
 from .http import ThrottledClient
-from .market import MarketStore, is_current_eod_ready
+from .locking import SyncAlreadyRunning, sync_lock
+from .market import MarketStore, intraday_sync_block_reason, is_current_eod_ready
 from .report import render_markdown
 from .screen import Spec, run_screen
 from .screen.presets import load_preset
@@ -63,6 +65,7 @@ class SyncStep:
 @dataclass
 class SyncRunResult:
     started_at: str
+    sync_run_id: str = ""
     finished_at: str = ""
     as_of: str | None = None
     steps: list[SyncStep] = field(default_factory=list)
@@ -83,6 +86,17 @@ class SyncRunResult:
     @property
     def has_warnings(self) -> bool:
         return any(step.status == "warning" for step in self.steps)
+
+    @property
+    def exit_ok(self) -> bool:
+        """Whether a caller may report a successful scheduled run.
+
+        A warning means one registered source did not produce a trustworthy
+        result.  The rest of the pipeline still runs, but schedulers and CI
+        need a non-zero exit code so the warning cannot disappear silently.
+        """
+
+        return self.ok and not self.has_warnings
 
 
 ProgressCallback = Callable[[SyncProgress], None]
@@ -119,6 +133,7 @@ def _sync_t1_source(
     table: str,
     fallback_start: str,
     fetcher: Callable[..., BackfillResult],
+    sync_run_id: str,
 ) -> tuple[str, str, str]:
     del config, as_of
     start_day, pending_count, last_archived = _auto_backfill_window(
@@ -136,7 +151,9 @@ def _sync_t1_source(
         "running",
     )
     try:
-        fetched = fetcher(archive, client, start_day, end_day)
+        fetched = fetcher(
+            archive, client, start_day, end_day, sync_run_id=sync_run_id
+        )
     except Exception as error:  # noqa: BLE001 - 单源失败不能阻断其它源
         return "warning", f"{label}同步失败：{type(error).__name__}: {error}", ""
     status = _backfill_status(fetched)
@@ -150,6 +167,8 @@ def _sync_themes(
     as_of: str,
     trade_dates: list[str],
     emit_inside: Callable[[float, str, str], None],
+    *,
+    sync_run_id: str,
 ) -> tuple[str, str, str]:
     return _sync_t1_source(
         config,
@@ -163,6 +182,7 @@ def _sync_themes(
         table="theme_attribution",
         fallback_start=config.backfill.themes_start,
         fetcher=backfill_themes,
+        sync_run_id=sync_run_id,
     )
 
 
@@ -173,6 +193,8 @@ def _sync_dragon_tiger(
     as_of: str,
     trade_dates: list[str],
     emit_inside: Callable[[float, str, str], None],
+    *,
+    sync_run_id: str,
 ) -> tuple[str, str, str]:
     return _sync_t1_source(
         config,
@@ -186,6 +208,7 @@ def _sync_dragon_tiger(
         table="dragon_tiger",
         fallback_start=config.backfill.dragon_tiger_start,
         fetcher=backfill_dragon_tiger,
+        sync_run_id=sync_run_id,
     )
 
 
@@ -196,6 +219,8 @@ def _sync_margin(
     as_of: str,
     trade_dates: list[str],
     emit_inside: Callable[[float, str, str], None],
+    *,
+    sync_run_id: str,
 ) -> tuple[str, str, str]:
     return _sync_t1_source(
         config,
@@ -209,6 +234,7 @@ def _sync_margin(
         table="margin_trading",
         fallback_start=config.backfill.margin_start,
         fetcher=backfill_margin_exchange,
+        sync_run_id=sync_run_id,
     )
 
 
@@ -219,16 +245,39 @@ def _sync_sector(
     as_of: str,
     trade_dates: list[str],
     emit_inside: Callable[[float, str, str], None],
+    *,
+    sync_run_id: str,
 ) -> tuple[str, str, str]:
     del config, trade_dates
     emit_inside(0.0, f"尝试保存 {as_of} 板块快照…", "running")
     try:
-        results = snapshot_all(archive, client, as_of)
+        results = snapshot_all(archive, client, as_of, sync_run_id)
         status = _snapshot_status(results)
         summary = "；".join(item.summary() for item in results) or "无板块快照结果"
         return status, summary, ""
     except Exception as error:  # noqa: BLE001 - 单源失败不能阻断其它源
         return "warning", f"板块快照同步失败：{type(error).__name__}: {error}", ""
+
+
+def _sync_announcements(
+    config: AppConfig,
+    archive: ArchiveStore,
+    client: ThrottledClient,
+    as_of: str,
+    trade_dates: list[str],
+    emit_inside: Callable[[float, str, str], None],
+    *,
+    sync_run_id: str,
+) -> tuple[str, str, str]:
+    del trade_dates
+    emit_inside(0.0, "同步沪深交易所公告目录并生成待分类队列…", "running")
+    return sync_public_announcements(
+        archive,
+        client,
+        as_of=as_of,
+        sync_run_id=sync_run_id,
+        reports_dir=config.reports_dir,
+    )
 
 
 def _sync_fundamentals(
@@ -238,6 +287,8 @@ def _sync_fundamentals(
     as_of: str,
     trade_dates: list[str],
     emit_inside: Callable[[float, str, str], None],
+    *,
+    sync_run_id: str,
 ) -> tuple[str, str, str]:
     del client, trade_dates
     try:
@@ -270,6 +321,7 @@ def _sync_fundamentals(
             workers=config.fundamentals.workers,
             history_periods=config.fundamentals.history_periods,
             progress=on_progress,
+            sync_run_id=sync_run_id,
         )
         status = "warning" if synced.warning else "done"
         return status, synced.summary(), "；".join(
@@ -286,6 +338,7 @@ SYNC_SOURCE_REGISTRY: tuple[SyncSource, ...] = (
     SyncSource("dragon-tiger", "龙虎榜", _sync_dragon_tiger),
     SyncSource("margin", "官方两融", _sync_margin),
     SyncSource("sector", "板块快照", _sync_sector),
+    SyncSource("announcements", "沪深交易所公告", _sync_announcements),
     SyncSource(
         "fundamentals",
         "估值与财务（BaoStock）",
@@ -318,7 +371,7 @@ SYNC_STAGES = (
 )
 
 
-def run_sync_all(
+def _run_sync_all_unlocked(
     config: AppConfig,
     *,
     preset: str = "low-position",
@@ -336,8 +389,8 @@ def run_sync_all(
     留下 warning 并继续其它步骤；只有本地行情不存在或推荐无法计算才是 fatal failure。
     """
 
-    started = datetime.now().isoformat(timespec="seconds")
-    result = SyncRunResult(started_at=started)
+    started = local_now()
+    result = SyncRunResult(started_at=started, sync_run_id=uuid4().hex[:16])
     stages = _stages_for(config)
     stage_labels = dict(stages)
     sources = _active_sources(config)
@@ -380,13 +433,14 @@ def run_sync_all(
         add_step("market", "failed", message)
         result.notes.append(message)
         emit("market", stage_fraction(0), message, "failed")
-        result.finished_at = datetime.now().isoformat(timespec="seconds")
+        result.finished_at = local_now()
         return result
 
     try:
         with MarketStore(market_path) as store:
             advance = advance_bars(
                 store,
+                symbols=symbols_for_refresh(store, config.market.instrument_parquet),
                 workers=workers,
                 progress=lambda index, count, phase: emit(
                     "market",
@@ -404,7 +458,8 @@ def run_sync_all(
             raw_market_as_of = store.latest_trade_date()
             result.as_of = store.latest_complete_trade_date()
             trade_dates = store.trade_dates(end=result.as_of)
-            current_eod_ready = is_current_eod_ready(raw_market_as_of)
+            market_fresh = advance.up_to_date or bool(advance.rows)
+            current_eod_ready = market_fresh and is_current_eod_ready(raw_market_as_of)
         market_status = "done" if advance.up_to_date or advance.rows else "warning"
         market_summary = advance.summary().splitlines()[0]
         market_detail = "；".join(advance.notes)
@@ -428,7 +483,7 @@ def run_sync_all(
         add_step("market", "failed", message)
         result.notes.append(message)
         emit("market", stage_fraction(0), message, "failed")
-        result.finished_at = datetime.now().isoformat(timespec="seconds")
+        result.finished_at = local_now()
         return result
 
     # 2. 注册数据源：所有源共用同一套进度、失败隔离和本地归档生命周期。
@@ -477,6 +532,7 @@ def run_sync_all(
                     result.as_of,
                     trade_dates,
                     emit_inside,
+                    sync_run_id=result.sync_run_id,
                 )
             except Exception as error:  # noqa: BLE001 - 单源失败不阻断其它源
                 status = "warning"
@@ -496,10 +552,17 @@ def run_sync_all(
         summary = "已按调用方要求跳过推荐生成"
         add_step("recommendation", "skipped", summary)
         emit("recommendation", stage_fraction(recommendation_index), summary, "skipped")
+    elif not current_eod_ready:
+        summary = (
+            f"最新行情日期 {raw_market_as_of} 不是今天已确认收盘的数据；"
+            "本次只补行情和可回补归档，不生成新的推荐或前向留证"
+        )
+        add_step("recommendation", "skipped", summary)
+        emit("recommendation", stage_fraction(recommendation_index), summary, "skipped")
     else:
         emit("recommendation", stage_fraction(recommendation_index, 0.0), "用本地归档重新计算推荐…")
     try:
-        if skip_recommendation:
+        if skip_recommendation or not current_eod_ready:
             raise _SkipSyncStage
         payload = load_preset(preset)
         payload["as_of"] = result.as_of
@@ -511,9 +574,12 @@ def run_sync_all(
 
         reports_dir = Path(config.reports_dir)
         reports_dir.mkdir(parents=True, exist_ok=True)
-        report_path = reports_dir / f"{screened.as_of}.md"
-        csv_path = reports_dir / f"{screened.as_of}.csv"
-        report_path.write_text(render_markdown(screened), encoding="utf-8")
+        report_path = reports_dir / f"{screened.as_of}__{spec_fingerprint(screened.spec)}.md"
+        csv_path = reports_dir / f"{screened.as_of}__{spec_fingerprint(screened.spec)}.csv"
+        report_text = render_markdown(
+            screened, spec_hash=spec_fingerprint(screened.spec), sync_run_id=result.sync_run_id
+        )
+        report_path.write_text(report_text, encoding="utf-8")
         screened.frame.to_csv(csv_path, index=False, encoding="utf-8-sig")
         result.screen = screened
         result.report_path = report_path
@@ -528,16 +594,20 @@ def run_sync_all(
         message = f"推荐生成失败：{type(error).__name__}: {error}"
         add_step("recommendation", "failed", message)
         result.notes.append(message)
-        emit("recommendation", stage_fraction(5), message, "failed")
+        emit("recommendation", stage_fraction(validation_index - 1), message, "failed")
 
     # 4. 推荐留证与前向验证 -----------------------------------------------
     if skip_validation:
         summary = "已按调用方要求跳过推荐留证与验证"
         add_step("validation", "skipped", summary)
         emit("validation", stage_fraction(validation_index), summary, "skipped")
+    elif not current_eod_ready:
+        summary = "没有生成当日收盘推荐，本次不新增前向留证"
+        add_step("validation", "skipped", summary)
+        emit("validation", stage_fraction(validation_index), summary, "skipped")
     else:
         emit("validation", stage_fraction(validation_index, 0.0), "记录本次推荐并更新历史验证…")
-    if skip_validation:
+    if skip_validation or not current_eod_ready:
         pass
     elif result.screen is None:
         message = "推荐未生成，无法创建前向留证"
@@ -549,7 +619,8 @@ def run_sync_all(
             forward_dir = Path(config.reports_dir) / "forward"
             record = build_record(
                 result.screen,
-                run_at=datetime.now().isoformat(timespec="seconds"),
+                run_at=local_now(),
+                sync_run_id=result.sync_run_id,
             )
             record_path, journal_path = append_record(forward_dir, record)
             with MarketStore(market_path) as store:
@@ -578,18 +649,75 @@ def run_sync_all(
             result.notes.append(message)
             emit("validation", 1.0, message, "warning")
 
-    result.finished_at = datetime.now().isoformat(timespec="seconds")
+    result.finished_at = local_now()
     return result
 
 
 def _backfill_status(result: BackfillResult) -> str:
-    if result.failed:
-        return "warning"
-    if result.rejected and not result.ok:
+    if result.failed or result.rejected:
         return "warning"
     if result.attempted and not result.ok and not result.skipped:
         return "warning"
     return "done"
+
+
+def run_sync_all(
+    config: AppConfig,
+    *,
+    preset: str = "low-position",
+    workers: int = 8,
+    progress: ProgressCallback | None = None,
+    skip_sources: set[str] | None = None,
+    skip_recommendation: bool = False,
+    skip_validation: bool = False,
+) -> SyncRunResult:
+    """Run one complete sync while preventing cross-process races."""
+
+    block_reason = intraday_sync_block_reason()
+    if block_reason:
+        now = local_now()
+        result = SyncRunResult(
+            started_at=now,
+            finished_at=now,
+            sync_run_id=uuid4().hex[:16],
+        )
+        result.steps.append(
+            SyncStep("market-window", "交易时段同步限制", "skipped", block_reason)
+        )
+        result.notes.append(block_reason)
+        if progress:
+            progress(
+                SyncProgress(
+                    "market-window", "交易时段同步限制", 1.0, block_reason, "skipped"
+                )
+            )
+        return result
+
+    lock_path = Path(config.logs_dir) / "sync.lock"
+    try:
+        with sync_lock(lock_path):
+            return _run_sync_all_unlocked(
+                config,
+                preset=preset,
+                workers=workers,
+                progress=progress,
+                skip_sources=skip_sources,
+                skip_recommendation=skip_recommendation,
+                skip_validation=skip_validation,
+            )
+    except SyncAlreadyRunning as error:
+        now = local_now()
+        result = SyncRunResult(
+            started_at=now,
+            finished_at=now,
+            sync_run_id=uuid4().hex[:16],
+        )
+        message = str(error)
+        result.steps.append(SyncStep("sync-lock", "同步互斥", "failed", message))
+        result.notes.append(message)
+        if progress:
+            progress(SyncProgress("sync-lock", "同步互斥", 1.0, message, "failed"))
+        return result
 
 
 def _validation_summary_text(grouped: pd.DataFrame) -> str:
@@ -617,19 +745,26 @@ def _auto_backfill_window(
 ) -> tuple[str | None, int, str | None]:
     """根据本地行情与归档进度计算下一段自动追平区间。
 
-    已有数据时只从该表最后一个成功归档日之后继续，避免每次启动重复扫描多年
-    历史；空表才从数据源允许的初始化起点开始。返回值依次是起始日、待追平的
-    本地交易日数量、最后归档日。
+    不是只看最大日期：内部缺口、失败和最近空响应也会被识别。这样中途一次
+    网络故障不会让后续日期把缺口永久遮住；较老的 EMPTY 记录则按归档账本的
+    重试策略跳过，避免每次启动都重复轰炸同一个历史接口。返回值依次是起始日、
+    待追平的本地交易日数量、最后归档日。
 
     这里故意不把 T2 快照纳入计划：板块快照只能保存当前日，无法历史回补。
     """
 
+    task_by_table = {
+        "theme_attribution": "backfill-themes",
+        "dragon_tiger": "backfill-dragon-tiger",
+        "margin_trading": "backfill-margin-exchange",
+    }
+    task = task_by_table.get(table)
+    if task is None:
+        raise ValueError(f"不支持自动回补的表：{table}")
+    candidates = [day for day in trade_dates if day >= fallback_start]
+    pending = archive.retryable_dates(table, candidates, task=task)
     done = archive.archived_dates(table)
     last_archived = max(done) if done else None
-    if last_archived is None:
-        pending = [day for day in trade_dates if day >= fallback_start]
-    else:
-        pending = [day for day in trade_dates if day > last_archived]
     if not pending:
         return None, 0, last_archived
     return pending[0], len(pending), last_archived

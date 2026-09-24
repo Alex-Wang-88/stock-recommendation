@@ -96,22 +96,23 @@ def test_daily_job_runs_every_step_and_reports_each_one(
 def test_t2_failure_does_not_fail_the_whole_job(
     tmp_path, bars_factory, parquet_writer, monkeypatch
 ):
-    """T2 失败就判失败的话，调度器会一直重试 —— 而重试补不回已经过去的那一天。"""
+    """T2 失败需要返回非零，让调度器和人工都能看到永久缺口。"""
 
     config = build_config(tmp_path)
     seed_market(config, bars_factory, parquet_writer)
     monkeypatch.setattr(cli, "advance_bars", up_to_date_advance)
     monkeypatch.setattr(cli, "snapshot_all", failing_snapshot)
+    monkeypatch.setattr(cli, "is_current_eod_ready", lambda _date: True)
     monkeypatch.setattr(cli, "backfill_themes", lambda *a, **k: BackfillResult(task="t", ok=1))
     monkeypatch.setattr(cli, "_screen_and_record", lambda *a, **k: 0)
 
-    assert cli.cmd_daily_job(config, make_args()) == 0
+    assert cli.cmd_daily_job(config, make_args()) == 1
 
 
-def test_theme_backfill_starts_after_the_last_archived_theme_day(
+def test_theme_backfill_starts_at_the_earliest_missing_trade_day(
     tmp_path, bars_factory, parquet_writer, monkeypatch
 ):
-    """题材补抓的区间必须**接着归档最后一天往后**，且只覆盖交易日。
+    """题材补抓要从最早缺口开始，且只覆盖交易日。
 
     从固定的"近 N 天"起算会每天重复抓同样的日期；用自然日回推又会撞上节假日。
     """
@@ -149,7 +150,7 @@ def test_theme_backfill_starts_after_the_last_archived_theme_day(
     monkeypatch.setattr(cli, "backfill_themes", fake_backfill)
 
     assert cli.cmd_daily_job(config, make_args()) == 0
-    assert captured["start"] == "2026-09-14"  # 09-11 之后的下一个**交易日**（跳过周末）
+    assert captured["start"] == "2026-09-09"
     assert captured["end"] == "2026-09-16"
 
 
@@ -162,7 +163,11 @@ def test_theme_step_is_skipped_when_already_current(
     monkeypatch.setattr(cli, "advance_bars", up_to_date_advance)
     monkeypatch.setattr(cli, "snapshot_all", lambda *a, **k: [])
     monkeypatch.setattr(cli, "_screen_and_record", lambda *a, **k: 0)
-    monkeypatch.setattr(cli, "backfill_themes", lambda *a, **k: called.append(True))
+    monkeypatch.setattr(
+        cli,
+        "backfill_themes",
+        lambda *a, **k: called.append(True) or BackfillResult(task="backfill-themes"),
+    )
     # 题材归档已到 09-16（= 行情最新日）⇒ 不该发起任何抓取。
     store = ArchiveStore(config.archive_db)
     try:
@@ -170,11 +175,11 @@ def test_theme_step_is_skipped_when_already_current(
             "theme_attribution",
             pd.DataFrame(
                 {
-                    "trade_date": [pd.Timestamp("2026-09-16").date()],
-                    "symbol": ["600519"],
-                    "name": ["贵州茅台"],
-                    "reason": ["测试"],
-                    "source_date": [pd.Timestamp("2026-09-16").date()],
+                    "trade_date": [day.date() for day in pd.bdate_range("2026-09-09", periods=6)],
+                    "symbol": ["600519"] * 6,
+                    "name": ["贵州茅台"] * 6,
+                    "reason": ["测试"] * 6,
+                    "source_date": [day.date() for day in pd.bdate_range("2026-09-09", periods=6)],
                 }
             ),
             ("trade_date", "symbol", "name", "reason", "source_date"),

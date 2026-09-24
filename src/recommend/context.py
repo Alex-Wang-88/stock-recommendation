@@ -13,10 +13,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 
 import pandas as pd
 
+from .announcements import CATEGORY_LABELS, queue_path
 from .archive import ArchiveStore
+from .calendar_risk import calendar_coverage_note, preholiday_window
 from .config import AppConfig
 from .factors import FactorTable, build_factor_table
 from .market import MarketStore, default_base_dates
@@ -121,6 +124,13 @@ class ScreenContext:
     def build(self) -> FactorTable:
         """组装因子宽表。缺哪一块就只让对应列为 NaN，并记一条 note。"""
 
+        coverage_note = calendar_coverage_note(self.as_of)
+        if coverage_note:
+            self.notes.append(coverage_note)
+        holiday_window = preholiday_window(self.as_of)
+        if holiday_window:
+            self.notes.append(holiday_window.report_note(self.as_of))
+
         bars = self.market.bars(end=self.as_of, window=self.config.market.window)
         if bars.empty:
             raise ValueError(f"{self.as_of} 没有任何行情数据")
@@ -136,16 +146,18 @@ class ScreenContext:
         attribution = self.archive.themes_on(self.as_of)
         if attribution.empty:
             self.notes.append(
-                f"{self.as_of} 的题材归因为空 ⇒ 题材因子全为缺失。"
-                "若不是非交易日，请跑 `recommend backfill themes` 补齐。"
+                f"{self.as_of} 的题材归因为空 ⇒ 当日题材热度/标签缺失；"
+                "历史题材天数仍按已归档数据计算。若不是非交易日，请跑 "
+                "`recommend backfill themes` 补齐。"
             )
         tag_daily = self.archive.tag_counts_on(self.as_of)
 
-        theme_history = None
-        if not attribution.empty:
-            theme_history = self.archive.theme_history(
-                self.window_start, self.as_of, symbols=universe["symbol"].tolist()
-            )
+        # 当前日题材接口缺失时，仍保留此前已归档的 20 日上榜天数；
+        # 只有当日热度、标签和主力净额保持缺失。这样一次临时回退不会把
+        # 一个本来可用的历史因子整块抹掉。
+        theme_history = self.archive.theme_history(
+            self.window_start, self.as_of, symbols=universe["symbol"].tolist()
+        )
 
         if self.archive.table_row_count("dragon_tiger"):
             dragon_tiger = self.archive.dragon_tiger_between(self.window_start, self.as_of)
@@ -199,6 +211,56 @@ class ScreenContext:
             financial_history=financial_history,
             as_of=self.as_of,
         )
+
+        # 公告只作为候选表中的文字提醒，不参与过滤、评分或排序。
+        event_start = max(
+            date.fromisoformat(self.as_of) - timedelta(days=4),
+            date.fromisoformat(self.window_start),
+        ).isoformat()
+        announcements = self.archive.company_announcements_between(event_start, self.as_of)
+        if not announcements.empty:
+            announcements["symbol"] = announcements["symbol"].astype(str).str.zfill(6)
+            symbols = set(table.frame["symbol"].astype(str).str.zfill(6))
+            visible = announcements.loc[
+                announcements["symbol"].isin(symbols)
+                & announcements["signal"].isin(["risk", "event_watch"])
+            ].copy()
+            if not visible.empty:
+                visible["_signal_order"] = visible["signal"].map(
+                    {"risk": 0, "event_watch": 1}
+                )
+                visible = visible.sort_values(
+                    ["announcement_date", "_signal_order", "title"],
+                    ascending=[False, True, True],
+                )
+                alert_by_symbol: dict[str, str] = {}
+                for symbol, rows in visible.groupby("symbol", sort=False):
+                    details = []
+                    for event in rows.head(2).itertuples(index=False):
+                        label = CATEGORY_LABELS.get(str(event.category), str(event.category))
+                        details.append(f"{label}：{event.title}")
+                    alert_by_symbol[str(symbol)] = "；".join(details)
+                table.frame["announcement_alert"] = (
+                    table.frame["symbol"].astype(str).str.zfill(6).map(alert_by_symbol)
+                )
+                risk_count = int((visible["signal"] == "risk").sum())
+                watch_count = int((visible["signal"] == "event_watch").sum())
+                table.notes.append(
+                    f"近 5 日候选股票公告提醒：风险类 {risk_count} 条、事件观察 {watch_count} 条；"
+                    "只展示公告标题，不改变筛选、分数或排序。"
+                )
+        pending_count = int(
+            self.archive.conn.execute(
+                "select count(*) from company_announcements "
+                "where classification_status = 'pending'"
+            ).fetchone()[0]
+        )
+        if pending_count:
+            pending_file = queue_path(self.config.reports_dir)
+            table.notes.append(
+                f"另有 {pending_count} 条标题含糊的公告待 Codex Plus 分类；"
+                f"本轮最多导出 25 条到 `{pending_file}`，不影响推荐分数。"
+            )
         table.notes = list(self.notes) + list(table.notes)
         return table
 

@@ -66,6 +66,20 @@ def test_since_924_return_is_a_momentum_member():
     assert scored["score_momentum"].idxmax() == 3
 
 
+def test_margin_change_is_a_capital_member():
+    """两融变化已归档时，应真正进入资金类别，而不是只出现在明细列。"""
+
+    frame = _frame(
+        lhb_net_buy_rel=[np.nan] * 4,
+        main_net_inflow=[np.nan] * 4,
+        margin_rz_chg_20=[0.30, 0.10, 0.00, -0.10],
+    )
+    scored = add_scores(frame, {"capital": 1.0})
+    assert scored["score_capital"].notna().all()
+    assert scored["score_coverage"].eq(1.0).all()
+    assert scored["score_capital"].idxmax() == 0
+
+
 def test_missing_category_renormalizes_and_discloses_coverage():
     """资本类整列缺失时，权重在剩余类别间重新归一，并披露覆盖率。
 

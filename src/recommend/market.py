@@ -48,6 +48,7 @@ DEFAULT_WINDOW = 300
 # Windows 电脑后仍能按中国市场时间判断。
 SHANGHAI_TIMEZONE = timezone(timedelta(hours=8), "Asia/Shanghai")
 A_SHARE_EOD_READY = time(15, 30)
+A_SHARE_SYNC_BLOCK_START = time(9, 30)
 
 
 def _shanghai_now(value: datetime | None = None) -> datetime:
@@ -64,6 +65,21 @@ def is_current_eod_ready(trade_date: str, now: datetime | None = None) -> bool:
 
     current = _shanghai_now(now)
     return _iso(trade_date) == current.date().isoformat() and current.time() >= A_SHARE_EOD_READY
+
+
+def intraday_sync_block_reason(now: datetime | None = None) -> str | None:
+    """盘中暂停日常同步，避免把当日未完成行情写入本地推荐数据。"""
+
+    current = _shanghai_now(now)
+    if (
+        current.weekday() < 5
+        and A_SHARE_SYNC_BLOCK_START <= current.time() < A_SHARE_EOD_READY
+    ):
+        return (
+            "工作日 09:30–15:30 暂停日常数据同步；页面继续读取本地最近一个完整交易日。"
+            "请在 16:00 收盘后任务运行，或 15:30 后再手动同步。"
+        )
+    return None
 
 
 def _iso(value: str) -> str:
@@ -168,6 +184,17 @@ class MarketStore:
         if not dates:
             raise ValueError("行情归档为空")
         return dates[-1]
+
+    def symbols(self) -> list[str]:
+        """Return every symbol already present in the local archive."""
+
+        self._require()
+        frame = self.conn.execute(
+            f"select distinct symbol from '{self.path.as_posix()}'"
+        ).df()
+        if frame.empty:
+            return []
+        return sorted(frame["symbol"].astype(str).str.zfill(6).unique().tolist())
 
     def latest_complete_trade_date(self, now: datetime | None = None) -> str:
         """返回最近一个适合生成推荐的**完整交易日**。

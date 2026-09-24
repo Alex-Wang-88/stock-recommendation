@@ -84,6 +84,7 @@ ID_COLUMNS = (
     "listed_days",
     "theme_tags",
     "reason",
+    "announcement_alert",
 )
 
 

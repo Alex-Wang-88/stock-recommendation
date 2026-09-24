@@ -18,6 +18,7 @@ DISPLAY_COLUMNS = (
     "industry",
     "close",
     "operation_signal",
+    "announcement_alert",
     "buy_low",
     "buy_high",
     "invalidation_price",
@@ -56,6 +57,8 @@ DISPLAY_COLUMNS = (
     "theme_days_20",
     "theme_tags",
     "lhb_count_20",
+    "lhb_net_buy_rel",
+    "margin_rz_chg_20",
 )
 
 PCT_COLUMNS = (
@@ -240,12 +243,21 @@ def markdown_table(view: pd.DataFrame) -> str:
     return "\n".join([header, divider, *rows])
 
 
-def render_markdown(result: ScreenResult) -> str:
+def render_markdown(
+    result: ScreenResult, *, spec_hash: str | None = None, sync_run_id: str | None = None
+) -> str:
     """完整报告：条件 → 数据时点 → 剔除日志 → 候选表 → 每条的理由。"""
 
     lines: list[str] = []
     lines.append(f"# 筛选结果 · as-of {result.as_of}")
     lines.append("")
+    if spec_hash or sync_run_id:
+        lines.append("## 留证标识")
+        if spec_hash:
+            lines.append(f"- 规则指纹：`{spec_hash}`")
+        if sync_run_id:
+            lines.append(f"- 同步批次：`{sync_run_id}`")
+        lines.append("")
     lines.append("## 筛选条件")
     lines.extend(f"- {line}" for line in result.spec.describe())
     lines.append("")

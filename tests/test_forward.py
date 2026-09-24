@@ -93,6 +93,7 @@ def test_build_record_captures_weights_breakdown_and_reasons():
             "ret_20": [0.1],
             "volume_trend_20": [1.5],
             "theme_tags": ["算力"],
+            "margin_rz_chg_20": [0.12],
         }
     )
     result = make_result(frame, {"limit": 5})
@@ -100,6 +101,7 @@ def test_build_record_captures_weights_breakdown_and_reasons():
     record = build_record(result, run_at="t")
 
     candidate = record.candidates[0]
+    assert candidate["margin_rz_chg_20"] == pytest.approx(0.12)
     assert record.weights == {"momentum": 0.35}
     assert candidate["score_breakdown"] == {
         "momentum": 0.9,
@@ -149,6 +151,30 @@ def test_append_record_is_idempotent_per_day_and_appends_the_journal(tmp_path):
 
 def test_load_journal_is_empty_not_an_error_before_the_first_run(tmp_path):
     assert load_journal(tmp_path / "还没建").empty
+
+
+def test_evaluate_deduplicates_repeated_runs_but_keeps_separate_specs(
+    tmp_path, rising_store
+):
+    store, dates = rising_store
+    frame = pd.DataFrame({"symbol": ["000001"], "name": ["A"], "close": [10.0], "score": [0.5]})
+
+    first = build_record(make_result(frame, {"limit": 5}), run_at="2026-08-03T10:00:00")
+    first.as_of = dates[0]
+    append_record(tmp_path, first)
+    repeated = build_record(make_result(frame, {"limit": 5}), run_at="2026-08-03T11:00:00")
+    repeated.as_of = dates[0]
+    append_record(tmp_path, repeated)
+
+    other_spec = build_record(make_result(frame, {"limit": 6}), run_at="2026-08-03T12:00:00")
+    other_spec.as_of = dates[0]
+    append_record(tmp_path, other_spec)
+
+    per_run, grouped = evaluate(store, tmp_path, horizons=(1,))
+    assert len(per_run) == 2
+    assert per_run["spec_hash"].nunique() == 2
+    assert len(grouped) == 2
+    assert set(grouped["runs"]) == {1}
 
 
 # -- 对账 ------------------------------------------------------------------- #

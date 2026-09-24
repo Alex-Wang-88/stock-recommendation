@@ -180,7 +180,8 @@ def test_advance_is_a_noop_when_already_current(store, monkeypatch):
 def test_advance_refreshes_same_day_after_close(store, monkeypatch):
     """盘中快照已经写入后，收盘后同一天必须重新抓取最终日线。"""
 
-    rows = [kline_row("2026-09-15", 99.0), kline_row("2026-09-16", 100.0)]
+    # 历史重叠日保持一致；当天从盘中 100 刷新成收盘 101，不能被误判为公司行动。
+    rows = [kline_row("2026-09-15", 100.0), kline_row("2026-09-16", 101.0)]
     stub = StubClient(
         klines={
             "sh600519": kline_node(rows),
@@ -195,6 +196,7 @@ def test_advance_refreshes_same_day_after_close(store, monkeypatch):
 
     assert result.up_to_date is False
     assert result.previous_date == result.quote_date == "2026-09-16"
+    assert result.repaired == []
     assert result.rows > 0
     assert "刷新当天日线" in result.summary()
 

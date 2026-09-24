@@ -294,6 +294,12 @@ class DragonTigerSource:
         )
         normalized = normalized.dropna(subset=["symbol"])
         normalized["symbol"] = normalized["symbol"].astype(str).str.zfill(6)
+        echoed_dates = normalized["trade_date"].dropna().astype(str).str[:10]
+        mismatched = sorted(set(echoed_dates) - {str(trade_date)[:10]})
+        if mismatched:
+            raise FallbackResponseError(
+                f"龙虎榜响应日期与请求不一致：请求 {trade_date}，响应 {mismatched[:3]}"
+            )
         return normalized.loc[:, list(DRAGON_TIGER_COLUMNS)].reset_index(drop=True)
 
 

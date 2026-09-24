@@ -1,0 +1,210 @@
+name: Daily stock data sync
+
+on:
+  schedule:
+    # 16:00 China Standard Time (UTC+8), Monday through Friday.
+    - cron: "0 8 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      restore_snapshot_key:
+        description: "Optional cache key from a previous run to restore that seven-day snapshot"
+        required: false
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: stock-recommendation-daily-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TZ: Asia/Shanghai
+      STATE_CACHE_KEY: stock-state-v1-${{ github.run_id }}-${{ github.run_attempt }}
+      RESTORE_SNAPSHOT_KEY: ${{ github.event.inputs.restore_snapshot_key || '' }}
+
+    steps:
+      - name: Check out code without downloading LFS data
+        uses: actions/checkout@v7
+        with:
+          lfs: false
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Find latest complete state artifact
+        id: latest-artifact
+        if: ${{ github.event.inputs.restore_snapshot_key == '' }}
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { data } = await github.rest.actions.listArtifactsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+            const latest = data.artifacts
+              .filter((artifact) =>
+                artifact.name === "stock-state-latest" &&
+                !artifact.expired &&
+                artifact.workflow_run?.id !== context.runId
+              )
+              .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0];
+            core.setOutput("run_id", latest ? String(latest.workflow_run.id) : "");
+
+      - name: Download latest complete state artifact
+        if: ${{ steps.latest-artifact.outputs.run_id != '' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: stock-state-latest
+          path: runtime-state
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.latest-artifact.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Restore a saved full-state snapshot if needed
+        id: state-cache
+        if: ${{ github.event.inputs.restore_snapshot_key != '' || steps.latest-artifact.outputs.run_id == '' }}
+        uses: actions/cache/restore@v6
+        with:
+          path: runtime-state
+          key: ${{ env.STATE_CACHE_KEY }}
+          restore-keys: |
+            ${{ github.event.inputs.restore_snapshot_key || 'stock-state-v1-' }}
+
+      - name: Bootstrap initial state from Git LFS when no snapshot exists
+        shell: bash
+        env:
+          RESTORE_SNAPSHOT_KEY: ${{ github.event.inputs.restore_snapshot_key || '' }}
+        run: |
+          set -euo pipefail
+
+          has_state() {
+            for file in \
+              runtime-state/data/archive.duckdb \
+              runtime-state/data/market/daily.parquet \
+              runtime-state/data/reference/instrument_master.parquet \
+              runtime-state/data/reference/industry_master.csv; do
+              if [[ ! -s "$file" ]] || head -c 64 "$file" | grep -q 'git-lfs.github.com/spec/v1'; then
+                return 1
+              fi
+            done
+          }
+
+          if [[ -n "$RESTORE_SNAPSHOT_KEY" ]]; then
+            if ! has_state; then
+              echo "Requested snapshot was not found or is incomplete: $RESTORE_SNAPSHOT_KEY" >&2
+              exit 1
+            fi
+          elif ! has_state; then
+            echo "No saved state exists; downloading the initial runtime database from Git LFS."
+            git lfs pull --include="data/archive.duckdb,data/market/daily.parquet"
+            mkdir -p \
+              runtime-state/data/market \
+              runtime-state/data/reference
+            cp data/archive.duckdb runtime-state/data/archive.duckdb
+            cp data/market/daily.parquet runtime-state/data/market/daily.parquet
+            cp data/reference/instrument_master.parquet runtime-state/data/reference/
+            cp data/reference/industry_master.csv runtime-state/data/reference/
+            if [[ -d data/reports ]]; then
+              cp -a data/reports runtime-state/data/
+            fi
+          fi
+
+      - name: Restore runtime state into the workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            data/archive.duckdb \
+            data/market/daily.parquet \
+            data/reference/instrument_master.parquet \
+            data/reference/industry_master.csv
+          rm -rf data/reports
+          mkdir -p data
+          cp -a runtime-state/data/. data/
+
+      - name: Install project dependencies
+        run: python -m pip install -e ".[free-data]"
+
+      - name: Run the daily rule-based sync
+        id: daily-job
+        if: ${{ github.event.inputs.restore_snapshot_key == '' }}
+        shell: bash
+        run: |
+          set +e
+          python -m recommend.cli daily-job --preset low-position --workers 8
+          result=$?
+          echo "exit_code=$result" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Stage a complete runtime snapshot
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf runtime-state
+          mkdir -p runtime-state/data/market runtime-state/data/reference
+          cp data/archive.duckdb runtime-state/data/archive.duckdb
+          cp data/market/daily.parquet runtime-state/data/market/daily.parquet
+          cp data/reference/instrument_master.parquet runtime-state/data/reference/
+          cp data/reference/industry_master.csv runtime-state/data/reference/
+          if [[ -d data/reports ]]; then
+            cp -a data/reports runtime-state/data/
+          fi
+
+      - name: Save this run as a seven-day recovery point
+        if: always() && hashFiles('runtime-state/data/archive.duckdb', 'runtime-state/data/market/daily.parquet') != ''
+        uses: actions/cache/save@v6
+        with:
+          path: runtime-state
+          key: ${{ env.STATE_CACHE_KEY }}
+
+      - name: Update the latest complete state artifact
+        if: always() && hashFiles('runtime-state/data/archive.duckdb', 'runtime-state/data/market/daily.parquet') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: stock-state-latest
+          path: runtime-state/
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+          compression-level: 0
+
+      - name: Write snapshot recovery details
+        if: always()
+        shell: bash
+        env:
+          DAILY_EXIT_CODE: ${{ steps.daily-job.outputs.exit_code }}
+          RESTORE_SNAPSHOT_KEY: ${{ github.event.inputs.restore_snapshot_key || '' }}
+          STATE_CACHE_KEY: ${{ env.STATE_CACHE_KEY }}
+        run: |
+          {
+            echo "## State snapshot"
+            echo
+            echo "- Cache key: `$STATE_CACHE_KEY`"
+            if [[ -n "$RESTORE_SNAPSHOT_KEY" ]]; then
+              echo "- Restored cache key: `$RESTORE_SNAPSHOT_KEY`"
+              echo "- Mode: restore only; daily sync was not run."
+            else
+              echo "- Daily sync exit code: `${DAILY_EXIT_CODE:-unavailable}`"
+            fi
+            echo "- The runtime snapshot excludes the one-time source Parquet files."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report daily sync failure
+        if: always() && github.event.inputs.restore_snapshot_key == '' && steps.daily-job.outputs.exit_code != '0'
+        shell: bash
+        env:
+          DAILY_EXIT_CODE: ${{ steps.daily-job.outputs.exit_code }}
+        run: |
+          echo "Daily sync returned exit code ${DAILY_EXIT_CODE:-unavailable}. The completed runtime state was still saved." >&2
+          exit 1

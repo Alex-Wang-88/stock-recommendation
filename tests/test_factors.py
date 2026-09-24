@@ -122,6 +122,23 @@ def test_theme_days_is_zero_when_history_available():
     assert out.loc["000002", "theme_days_20"] == 0
 
 
+def test_theme_history_survives_missing_current_attribution():
+    """当天题材快照缺失时，历史上榜天数仍可按已归档交易日计算。"""
+
+    history = pd.DataFrame(
+        {
+            "symbol": ["000001", "000001"],
+            "trade_date": pd.to_datetime(["2026-09-15", "2026-09-16"]),
+        }
+    )
+    universe = pd.DataFrame({"symbol": ["000001", "000002"]})
+    out = add_theme_factors(universe, pd.DataFrame(), pd.DataFrame(), history)
+    out = out.set_index("symbol")
+    assert pd.isna(out.loc["000001", "theme_heat_max"])
+    assert out.loc["000001", "theme_days_20"] == 2
+    assert out.loc["000002", "theme_days_20"] == 0
+
+
 def test_matches_themes_is_exact_not_substring():
     """「算力」不应命中「算力租赁」—— 整标签精确匹配，宁可漏不可错配。"""
 

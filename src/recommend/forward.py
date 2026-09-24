@@ -25,8 +25,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from uuid import uuid4
 
 import pandas as pd
 
@@ -66,13 +68,14 @@ class ForwardRecord:
     rejections: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     weights: dict[str, float] = field(default_factory=dict)
+    sync_run_id: str = ""
     run_at: str = ""
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False, indent=2)
 
 
-def build_record(result, *, run_at: str) -> ForwardRecord:
+def build_record(result, *, run_at: str, sync_run_id: str = "") -> ForwardRecord:
     """从一次 `ScreenResult` 构造留证记录。
 
     `candidates` 只留对账必需的因子摘要和操作参考字段 —— 完整因子明细已在同日的
@@ -110,6 +113,7 @@ def build_record(result, *, run_at: str) -> ForwardRecord:
         "theme_days_20",
         "lhb_net_buy_rel",
         "main_net_inflow",
+        "margin_rz_chg_20",
         "turnover_value_20",
         "pe_ttm",
         "pe_industry_value",
@@ -165,6 +169,7 @@ def build_record(result, *, run_at: str) -> ForwardRecord:
         rejections=result.rejection_lines(),
         notes=list(result.notes),
         weights={key: float(value) for key, value in result.weights.items()},
+        sync_run_id=sync_run_id,
         run_at=run_at,
     )
 
@@ -197,11 +202,15 @@ def append_record(directory: str | Path, record: ForwardRecord) -> tuple[Path, P
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     record_path = directory / f"{record.as_of}__{record.spec_hash}{RECORD_SUFFIX}"
-    record_path.write_text(record.to_json(), encoding="utf-8")
+    _atomic_write_text(record_path, record.to_json())
+
+    record_id = _record_id(record)
 
     summary = {
+        "record_id": record_id,
         "as_of": record.as_of,
         "spec_hash": record.spec_hash,
+        "sync_run_id": record.sync_run_id,
         "universe": record.universe,
         "pool": record.pool,
         "kept": record.kept,
@@ -209,12 +218,26 @@ def append_record(directory: str | Path, record: ForwardRecord) -> tuple[Path, P
         "weights": record.weights,
         "run_at": record.run_at,
     }
-    with (directory / JOURNAL_NAME).open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(summary, ensure_ascii=False) + "\n")
-    return record_path, directory / JOURNAL_NAME
+    journal_path = directory / JOURNAL_NAME
+    previous = journal_path.read_text(encoding="utf-8") if journal_path.exists() else ""
+    _atomic_write_text(
+        journal_path,
+        previous + json.dumps(summary, ensure_ascii=False) + "\n",
+    )
+    return record_path, journal_path
 
 
-JOURNAL_COLUMNS = ["as_of", "spec_hash", "universe", "pool", "kept", "symbols", "run_at"]
+JOURNAL_COLUMNS = [
+    "record_id",
+    "as_of",
+    "spec_hash",
+    "sync_run_id",
+    "universe",
+    "pool",
+    "kept",
+    "symbols",
+    "run_at",
+]
 
 
 def load_journal(directory: str | Path) -> pd.DataFrame:
@@ -230,7 +253,62 @@ def load_journal(directory: str | Path) -> pd.DataFrame:
     rows = [json.loads(line) for line in lines if line.strip()]
     if not rows:
         return pd.DataFrame(columns=JOURNAL_COLUMNS)
-    return pd.DataFrame(rows)
+    frame = pd.DataFrame(rows)
+    for column in JOURNAL_COLUMNS + ["sync_run_id", "record_id"]:
+        if column not in frame.columns:
+            frame[column] = ""
+    frame["record_id"] = frame.apply(
+        lambda row: str(row.get("record_id") or _record_id_from_row(row)), axis=1
+    )
+    return frame
+
+
+def _record_id(record: ForwardRecord) -> str:
+    return _record_id_from_values(
+        record.as_of, record.spec_hash, record.run_at, record.sync_run_id
+    )
+
+
+def _record_id_from_values(
+    as_of: object,
+    spec_hash: object,
+    run_at: object,
+    sync_run_id: object = "",
+) -> str:
+    payload = f"{as_of}|{spec_hash}|{run_at}|{sync_run_id}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _record_id_from_row(row: pd.Series) -> str:
+    return _record_id_from_values(
+        row.get("as_of", ""),
+        row.get("spec_hash", ""),
+        row.get("run_at", ""),
+        row.get("sync_run_id", ""),
+    )
+
+
+def _latest_records(journal: pd.DataFrame) -> pd.DataFrame:
+    """Keep the latest run per as-of date and spec for validation."""
+
+    if journal.empty:
+        return journal
+    frame = journal.copy()
+    frame["_journal_order"] = range(len(frame))
+    frame["_run_sort"] = frame["run_at"].fillna("").astype(str)
+    frame = frame.sort_values(
+        ["as_of", "spec_hash", "_run_sort", "_journal_order"], kind="stable"
+    )
+    frame = frame.drop_duplicates(subset=["as_of", "spec_hash"], keep="last")
+    return frame.sort_values("_journal_order", kind="stable").drop(
+        columns=["_journal_order", "_run_sort"]
+    )
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    temporary.write_text(content, encoding="utf-8")
+    os.replace(temporary, path)
 
 
 # --------------------------------------------------------------------------- #
@@ -251,7 +329,7 @@ def evaluate(store: MarketStore, directory: str | Path, horizons: tuple[int, ...
     把它当成"发现"就是自欺。**要看的是方向一致性与差额的弥散程度，不是点估计大小。**
     """
 
-    journal = load_journal(directory)
+    journal = _latest_records(load_journal(directory))
     if journal.empty:
         return journal, pd.DataFrame()
 
@@ -296,8 +374,11 @@ def evaluate(store: MarketStore, directory: str | Path, horizons: tuple[int, ...
             universe = _universe_return(day_frames, dates, index_of, record.as_of, horizon)
             rows.append(
                 {
+                    "record_id": getattr(record, "record_id", ""),
                     "as_of": record.as_of,
                     "spec_hash": record.spec_hash,
+                    "sync_run_id": getattr(record, "sync_run_id", ""),
+                    "run_at": getattr(record, "run_at", ""),
                     "horizon": horizon,
                     "n": len(picks),
                     "n_requested": len(symbols),
@@ -312,7 +393,7 @@ def evaluate(store: MarketStore, directory: str | Path, horizons: tuple[int, ...
     if per_run.empty:
         return per_run, pd.DataFrame()
     grouped = (
-        per_run.groupby("horizon")
+        per_run.groupby(["spec_hash", "horizon"])
         .agg(
             runs=("as_of", "nunique"),
             measured=("excess", "count"),
@@ -337,8 +418,12 @@ def persist_evaluation(
     directory.mkdir(parents=True, exist_ok=True)
     per_run_path = directory / EVALUATION_NAME
     summary_path = directory / EVALUATION_SUMMARY_NAME
-    per_run.to_csv(per_run_path, index=False, encoding="utf-8-sig")
-    per_horizon.to_csv(summary_path, index=False, encoding="utf-8-sig")
+    per_run_tmp = directory / f".{EVALUATION_NAME}.{uuid4().hex}.tmp"
+    summary_tmp = directory / f".{EVALUATION_SUMMARY_NAME}.{uuid4().hex}.tmp"
+    per_run.to_csv(per_run_tmp, index=False, encoding="utf-8-sig")
+    per_horizon.to_csv(summary_tmp, index=False, encoding="utf-8-sig")
+    os.replace(per_run_tmp, per_run_path)
+    os.replace(summary_tmp, summary_path)
     return per_run_path, summary_path
 
 

@@ -148,6 +148,7 @@ SCHEMA: tuple[str, ...] = (
     """
     create table if not exists archive_runs (
         run_id       varchar primary key,
+        sync_run_id  varchar,
         task         varchar,
         target       varchar,
         started_at   timestamp,
@@ -155,6 +156,35 @@ SCHEMA: tuple[str, ...] = (
         rows_written integer,
         status       varchar,
         detail       varchar
+    )
+    """,
+    """
+    create table if not exists company_announcements (
+        exchange               varchar not null,
+        announcement_id        varchar not null,
+        symbol                 varchar,
+        company_name           varchar,
+        announcement_date      date not null,
+        title                  varchar not null,
+        url                    varchar,
+        category               varchar,
+        signal                 varchar,
+        summary                varchar,
+        classification_status  varchar not null,
+        classification_source  varchar,
+        confidence             double,
+        fetched_at             timestamp,
+        classified_at          timestamp,
+        sync_run_id            varchar,
+        primary key (exchange, announcement_id)
+    )
+    """,
+    """
+    create table if not exists announcement_sync_state (
+        exchange          varchar primary key,
+        last_success_date date not null,
+        updated_at        timestamp,
+        sync_run_id       varchar
     )
     """,
 )
@@ -172,7 +202,20 @@ FINANCIAL_MIGRATIONS: tuple[str, ...] = (
     "alter table financial_quarterly add column if not exists cfo_to_or double",
     "alter table financial_quarterly add column if not exists cfo_to_np double",
     "alter table financial_quarterly add column if not exists cfo_to_gr double",
+    "alter table archive_runs add column if not exists sync_run_id varchar",
 )
+
+PRIMARY_KEYS: dict[str, tuple[str, ...]] = {
+    "theme_attribution": ("trade_date", "symbol"),
+    "theme_tag_daily": ("trade_date", "tag"),
+    "dragon_tiger": ("trade_date", "symbol"),
+    "margin_trading": ("trade_date", "symbol"),
+    "sector_snapshot": ("trade_date", "sector_code"),
+    "valuation_daily": ("trade_date", "symbol"),
+    "financial_quarterly": ("symbol", "stat_date"),
+    "company_announcements": ("exchange", "announcement_id"),
+    "announcement_sync_state": ("exchange",),
+}
 
 
 def split_tags(reason: str | None) -> list[str]:
@@ -232,6 +275,12 @@ class ArchiveStore:
         if missing:
             raise ValueError(f"{table} 缺少列：{missing}")
         payload = frame.loc[:, list(columns)].copy()
+        keys = PRIMARY_KEYS.get(table)
+        if keys:
+            missing_keys = [key for key in keys if key not in payload.columns]
+            if missing_keys:
+                raise ValueError(f"{table} 缺少主键列：{missing_keys}")
+            payload = payload.drop_duplicates(subset=list(keys), keep="last")
         self.conn.register("_incoming", payload)
         try:
             column_list = ", ".join(columns)
@@ -241,6 +290,46 @@ class ArchiveStore:
             )
         finally:
             self.conn.unregister("_incoming")
+        return len(payload)
+
+    def insert_new_announcements(self, frame: pd.DataFrame) -> int:
+        """只插入新公告，避免重叠同步窗口覆盖已有的分类结果。"""
+
+        columns = (
+            "exchange",
+            "announcement_id",
+            "symbol",
+            "company_name",
+            "announcement_date",
+            "title",
+            "url",
+            "category",
+            "signal",
+            "summary",
+            "classification_status",
+            "classification_source",
+            "confidence",
+            "fetched_at",
+            "classified_at",
+            "sync_run_id",
+        )
+        if frame is None or frame.empty:
+            return 0
+        missing = [column for column in columns if column not in frame.columns]
+        if missing:
+            raise ValueError(f"company_announcements 缺少列：{missing}")
+        payload = frame.loc[:, list(columns)].drop_duplicates(
+            subset=["exchange", "announcement_id"], keep="last"
+        )
+        self.conn.register("_incoming_announcements", payload)
+        try:
+            column_list = ", ".join(columns)
+            self.conn.execute(
+                f"insert or ignore into company_announcements ({column_list}) "
+                f"select {column_list} from _incoming_announcements"
+            )
+        finally:
+            self.conn.unregister("_incoming_announcements")
         return len(payload)
 
     def write_themes(self, frame: pd.DataFrame, trade_date: str) -> int:
@@ -266,31 +355,37 @@ class ArchiveStore:
         payload = frame.copy()
         payload["trade_date"] = pd.to_datetime(trade_date).date()
         payload["fetched_at"] = fetched_at
-        self.conn.execute(
-            "delete from theme_attribution where trade_date = ?",
-            [pd.to_datetime(trade_date).date()],
-        )
-        written = self.upsert(
-            "theme_attribution",
-            payload,
-            (
-                "trade_date",
-                "symbol",
-                "name",
-                "reason",
-                "close",
-                "change_pct",
-                "turnover_pct",
-                "amount",
-                "volume",
-                "big_order_net",
-                "market",
-                "source_date",
-                "fetched_at",
-            ),
-        )
-        self.rebuild_theme_tags(trade_date)
-        return written
+        try:
+            self.conn.execute("begin transaction")
+            self.conn.execute(
+                "delete from theme_attribution where trade_date = ?",
+                [pd.to_datetime(trade_date).date()],
+            )
+            written = self.upsert(
+                "theme_attribution",
+                payload,
+                (
+                    "trade_date",
+                    "symbol",
+                    "name",
+                    "reason",
+                    "close",
+                    "change_pct",
+                    "turnover_pct",
+                    "amount",
+                    "volume",
+                    "big_order_net",
+                    "market",
+                    "source_date",
+                    "fetched_at",
+                ),
+            )
+            self.rebuild_theme_tags(trade_date)
+            self.conn.execute("commit")
+            return written
+        except Exception:
+            self.conn.execute("rollback")
+            raise
 
     def purge_date(self, table: str, trade_date: str) -> int:
         """删除某张表某一天的全部记录（用于清除已确认被污染的日子）。"""
@@ -374,8 +469,9 @@ class ArchiveStore:
         rows_written: int,
         status: str,
         detail: str = "",
+        sync_run_id: str | None = None,
     ) -> str:
-        """记录一次运行。`status` 取 OK / EMPTY / FAILED。
+        """记录一次运行。`status` 取 OK / EMPTY / REJECTED / FAILED。
 
         `EMPTY` 必须与 `FAILED` 分开记：非交易日返回空是**正常**的，
         而接口失效返回空是**故障**。混在一起会让覆盖率统计失去意义。
@@ -384,10 +480,12 @@ class ArchiveStore:
         run_id = uuid.uuid4().hex[:12]
         self.conn.execute(
             "insert into archive_runs "
-            "(run_id, task, target, started_at, finished_at, rows_written, status, detail) "
-            "values (?, ?, ?, ?, ?, ?, ?, ?)",
+            "(run_id, sync_run_id, task, target, started_at, finished_at, "
+            "rows_written, status, detail) "
+            "values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 run_id,
+                sync_run_id,
                 task,
                 target,
                 started_at.replace(tzinfo=None),
@@ -528,10 +626,68 @@ class ArchiveStore:
 
     def run_log(self, limit: int = 20) -> pd.DataFrame:
         return self.conn.execute(
-            "select task, target, rows_written, status, detail, finished_at "
+            "select sync_run_id, task, target, rows_written, status, detail, "
+            "finished_at as finished_at_utc, "
+            "finished_at + interval '8 hours' as finished_at_shanghai "
             "from archive_runs order by finished_at desc limit ?",
             [limit],
         ).df()
+
+    def latest_run_status(self, task: str) -> dict[str, tuple[str, int]]:
+        """Return the most recent status and row count for each target."""
+
+        rows = self.conn.execute(
+            """
+            select target, status, rows_written
+            from (
+                select target, status, rows_written,
+                       row_number() over (
+                           partition by target order by finished_at desc, run_id desc
+                       ) as rn
+                from archive_runs
+                where task = ?
+            )
+            where rn = 1
+            """,
+            [task],
+        ).fetchall()
+        return {
+            str(target): (str(status), int(rows_written or 0))
+            for target, status, rows_written in rows
+        }
+
+    def retryable_dates(
+        self,
+        table: str,
+        trade_dates: list[str],
+        *,
+        task: str,
+        force: bool = False,
+        recent_empty_days: int = 5,
+    ) -> list[str]:
+        """Find missing dates without repeatedly hammering old empty dates.
+
+        Dates with no successful rows are normally retryable.  An old ``EMPTY``
+        response, however, usually means a non-trading day or a source whose
+        historical window does not reach that far.  Only the most recent few
+        empty dates are retried; FAILED/REJECTED dates remain retryable.
+        """
+
+        if force:
+            return list(trade_dates)
+        done = self.archived_dates(table)
+        statuses = self.latest_run_status(task)
+        recent = set(trade_dates[-max(1, int(recent_empty_days)) :])
+        pending: list[str] = []
+        for day in trade_dates:
+            if day in done:
+                continue
+            status, rows = statuses.get(day, ("", 0))
+            if not status or status in {"FAILED", "REJECTED"} or (status == "OK" and rows <= 0):
+                pending.append(day)
+            elif status == "EMPTY" and day in recent:
+                pending.append(day)
+        return pending
 
     def top_tags(self, trade_date: str, limit: int = 20) -> pd.DataFrame:
         return self.conn.execute(
@@ -597,6 +753,39 @@ class ArchiveStore:
             [pd.to_datetime(start).date(), pd.to_datetime(end).date()],
         ).df()
 
+    def company_announcements_between(
+        self, start: str, end: str, symbols: Sequence[str] | None = None
+    ) -> pd.DataFrame:
+        """已分类公告事件；供报告提示使用，不进入任何因子或排序。"""
+
+        clause = ""
+        params: list[Any] = [pd.to_datetime(start).date(), pd.to_datetime(end).date()]
+        if symbols is not None:
+            if not symbols:
+                return pd.DataFrame()
+            placeholders = ", ".join("?" for _ in symbols)
+            clause = f" and symbol in ({placeholders})"
+            params.extend(list(symbols))
+        return self.conn.execute(
+            "select exchange, announcement_id, symbol, company_name, announcement_date, "
+            "title, url, category, signal, summary, classification_status "
+            "from company_announcements where announcement_date between ? and ? "
+            "and classification_status = 'classified' "
+            f"{clause} order by announcement_date desc, fetched_at desc",
+            params,
+        ).df()
+
+    def pending_company_announcements(self, limit: int = 25) -> pd.DataFrame:
+        """按日期升序返回待 Codex 分类条目，优先清理最早积压。"""
+
+        return self.conn.execute(
+            "select exchange, announcement_id, symbol, company_name, announcement_date, "
+            "title, url from company_announcements "
+            "where classification_status = 'pending' "
+            "order by announcement_date, exchange, announcement_id limit ?",
+            [max(1, int(limit))],
+        ).df()
+
     def table_row_count(self, table: str) -> int:
         """某表总行数（用于区分「归档为空」与「该标的没上榜」）。"""
 
@@ -607,6 +796,7 @@ class ArchiveStore:
             "sector_snapshot",
             "valuation_daily",
             "financial_quarterly",
+            "company_announcements",
         }:
             raise ValueError(f"未知表：{table}")
         return int(self.conn.execute(f"select count(*) from {table}").fetchone()[0])

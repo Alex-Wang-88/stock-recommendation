@@ -24,6 +24,7 @@ T2_NOT_BACKFILLABLE = (
     "T2（板块排名 / 分钟资金流 / 北向 / 涨停梯队）只有当日快照，无法回补历史。"
     "唯一来源是本地每日归档 —— 晚一天上线就永久少一天数据。"
 )
+MIN_SECTOR_ROWS = 20
 
 
 def check_connectivity(client: ThrottledClient) -> bool:
@@ -41,20 +42,36 @@ def check_connectivity(client: ThrottledClient) -> bool:
 
 
 def _write_sectors(store: ArchiveStore, frame: pd.DataFrame, trade_date: str) -> int:
+    if frame is None or len(frame) < MIN_SECTOR_ROWS:
+        raise ValueError(f"板块快照行数不足：{len(frame) if frame is not None else 0}")
     payload = frame.copy()
     payload["trade_date"] = pd.to_datetime(trade_date).date()
     payload["fetched_at"] = datetime.now(UTC).replace(tzinfo=None)
-    return store.upsert(
-        "sector_snapshot",
-        payload,
-        ("trade_date", *SECTOR_COLUMNS, "fetched_at"),
-    )
+    try:
+        store.conn.execute("begin transaction")
+        store.conn.execute(
+            "delete from sector_snapshot where trade_date = ?",
+            [date.fromisoformat(trade_date)],
+        )
+        written = store.upsert(
+            "sector_snapshot",
+            payload,
+            ("trade_date", *SECTOR_COLUMNS, "fetched_at"),
+        )
+        if written < MIN_SECTOR_ROWS:
+            raise ValueError(f"板块快照去重后行数不足：{written}")
+        store.conn.execute("commit")
+        return written
+    except Exception:
+        store.conn.execute("rollback")
+        raise
 
 
 def snapshot_sectors(
     store: ArchiveStore,
     client: ThrottledClient,
     trade_date: str | None = None,
+    sync_run_id: str | None = None,
 ) -> BackfillResult:
     """落盘当日行业板块排名 + 板块主力资金流。已有记录则跳过（幂等）。"""
 
@@ -67,7 +84,7 @@ def snapshot_sectors(
         "select count(*) from sector_snapshot where trade_date = ?",
         [date.fromisoformat(target)],
     ).fetchone()[0]
-    if existing:
+    if existing >= MIN_SECTOR_ROWS:
         result.skipped = 1
         logger.info("snapshot-sectors %s 已存在（%d 行），跳过", target, existing)
         return result
@@ -79,26 +96,50 @@ def snapshot_sectors(
         target,
         lambda: source.fetch(),
         lambda frame: _write_sectors(store, frame, target),
+        sync_run_id,
     )
     return result
 
 
 def snapshot_all(
-    store: ArchiveStore, client: ThrottledClient, trade_date: str | None = None
+    store: ArchiveStore,
+    client: ThrottledClient,
+    trade_date: str | None = None,
+    sync_run_id: str | None = None,
 ) -> list[BackfillResult]:
-    """当日全部 T2 快照。先做通路对照，再逐项落盘。"""
+    """当日全部 T2 快照。已有结果先跳过，缺失时再做通路对照并落盘。"""
+
+    target = trade_date or date.today().isoformat()
+    # 先判断幂等结果，再做网络探测。否则当天早些时候已经成功保存快照，
+    # 晚些时候重复运行却遇到探测端点失败时，会把“本地已有数据”误报成失败。
+    existing = store.conn.execute(
+        "select count(*) from sector_snapshot where trade_date = ?",
+        [date.fromisoformat(target)],
+    ).fetchone()[0]
+    if existing >= MIN_SECTOR_ROWS:
+        return [snapshot_sectors(store, client, target, sync_run_id)]
 
     if not check_connectivity(client):
         logger.error("通路对照失败，跳过全部 T2 快照")
+        # 记录失败批次，便于调度器和覆盖率页面区分真实故障。
+        store.record_run(
+            "snapshot-all",
+            target,
+            datetime.now(UTC),
+            0,
+            "FAILED",
+            "对照端点不可用（网络或端点暂时不可达）",
+            sync_run_id,
+        )
         return [
             BackfillResult(
                 task="snapshot-all",
                 attempted=1,
                 failed=1,
-                failures=[("all", "对照端点不可用（网络/IP 层面）")],
+                failures=[("all", "对照端点不可用（网络或端点暂时不可达）")],
             )
         ]
-    return [snapshot_sectors(store, client, trade_date)]
+    return [snapshot_sectors(store, client, target, sync_run_id)]
 
 
 __all__ = [

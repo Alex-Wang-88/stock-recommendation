@@ -30,11 +30,18 @@ from recommend.market import MarketStore  # noqa: E402
 from recommend.rank.score import FACTOR_LABELS, RANK_MEMBERS  # noqa: E402
 from recommend.screen import Spec, run_screen  # noqa: E402
 from recommend.screen.presets import PRESETS, load_preset  # noqa: E402
-from recommend.sync import (  # noqa: E402
-    SyncProgress,
-    SyncRunResult,
-    coverage_snapshot,
-    run_sync_all,
+from recommend.sync import SyncRunResult, coverage_snapshot  # noqa: E402
+from recommend.web_sync import (  # noqa: E402
+    render_status as render_background_sync_status,
+)
+from recommend.web_sync import (  # noqa: E402
+    run_sync_with_feedback,
+)
+from recommend.web_sync import (  # noqa: E402
+    snapshot as background_sync_snapshot,
+)
+from recommend.web_sync import (  # noqa: E402
+    start as start_background_sync,
 )
 
 CATEGORY_LABELS = {
@@ -129,9 +136,25 @@ def load_config() -> AppConfig:
 
 @st.cache_resource(show_spinner=False)
 def auto_sync_state() -> dict[str, object]:
-    """每个 Streamlit 服务进程只保留一份启动同步状态。"""
+    """每个 Streamlit 服务进程只保留一份后台同步状态。
 
-    return {"lock": threading.Lock(), "started": False, "preset": None, "result": None}
+    这个状态必须放在 ``cache_resource`` 中，而不是 ``session_state``：同一个
+    Streamlit 服务可能同时有多个浏览器会话，启动同步只能跑一份。同步本身在
+    后台线程执行，主线程才能先把网页渲染出来，避免网络源慢时页面一直显示
+    Streamlit 的全页 spinner。
+    """
+
+    return {
+        "lock": threading.RLock(),
+        "startup_started": False,
+        "running": False,
+        "kind": "",
+        "preset": None,
+        "result": None,
+        "progress": None,
+        "error": None,
+        "last_result_id": None,
+    }
 
 
 def current_as_of(config: AppConfig) -> str | None:
@@ -541,14 +564,20 @@ def render_forward_validation(config: AppConfig) -> None:
         return
 
     latest_as_of = str(journal["as_of"].max()) if "as_of" in journal else ""
-    metric_cols = st.columns(3)
-    metric_cols[0].metric("推荐留证次数", f"{len(journal):,}")
-    metric_cols[1].metric("最近推荐数据日", latest_as_of)
+    unique_batches = (
+        journal[["as_of", "spec_hash"]].drop_duplicates().shape[0]
+        if {"as_of", "spec_hash"}.issubset(journal.columns)
+        else len(journal)
+    )
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("推荐运行记录", f"{len(journal):,}")
+    metric_cols[1].metric("独立推荐批次", f"{unique_batches:,}")
+    metric_cols[2].metric("最近推荐数据日", latest_as_of)
 
     if summary_path.exists():
         summary = pd.read_csv(summary_path)
         measured = int(summary["measured"].sum()) if "measured" in summary else 0
-        metric_cols[2].metric("已完成验证项", f"{measured:,}")
+        metric_cols[3].metric("已完成验证项", f"{measured:,}")
         display = summary.rename(
             columns={
                 "horizon": "持有交易日",
@@ -568,7 +597,7 @@ def render_forward_validation(config: AppConfig) -> None:
         st.markdown("**按持有期汇总**")
         st.dataframe(display, hide_index=True, width="stretch")
     else:
-        metric_cols[2].metric("已完成验证项", "0")
+        metric_cols[3].metric("已完成验证项", "0")
         st.info("验证文件尚未生成；下一次同步会自动创建。")
 
     recent = journal.tail(20).copy()
@@ -593,53 +622,7 @@ def render_forward_validation(config: AppConfig) -> None:
     )
 
 
-def run_sync_with_feedback(
-    config: AppConfig,
-    preset: str,
-    *,
-    startup: bool = False,
-) -> SyncRunResult:
-    title = "启动时自动同步" if startup else "手动同步"
-    st.markdown(f"<div class='section-label'>{title}</div>", unsafe_allow_html=True)
-    progress_bar = st.progress(0.0, text="准备同步…")
-    message_box = st.empty()
-
-    def on_progress(event: SyncProgress) -> None:
-        progress_bar.progress(event.fraction, text=f"{event.label} · {event.message}")
-        message_box.caption(f"{event.status.upper()}  /  {event.label}  /  {event.message}")
-
-    spinner_text = (
-        "启动同步正在执行，请保持页面打开…"
-        if startup
-        else "同步正在执行，请保持页面打开…"
-    )
-    with st.spinner(spinner_text):
-        run = run_sync_all(
-            config,
-            preset=preset,
-            progress=on_progress,
-        )
-    progress_bar.progress(1.0, text="同步流程结束")
-    if run.ok and not run.has_warnings:
-        st.success("同步完成，推荐已按最新本地归档重新计算。")
-    elif run.ok:
-        st.warning("同步流程完成，但有数据源返回警告；请查看下方步骤明细。")
-    else:
-        st.error("同步未完整完成；本地推荐仍保留可用结果，请查看步骤明细。")
-    for step in run.steps:
-        icon = {
-            "done": "完成",
-            "warning": "警告",
-            "failed": "失败",
-            "skipped": "延后",
-        }.get(step.status, step.status)
-        st.write(f"{icon} · {step.label}：{step.summary}")
-        if step.detail:
-            st.caption(step.detail)
-    return run
-
-
-def auto_sync_on_start(config: AppConfig, preset: str) -> SyncRunResult | None:
+def auto_sync_on_start(config: AppConfig, preset: str) -> None:
     """服务进程第一次建立页面会话时同步一次，页面交互不会重复抓取。"""
 
     if os.environ.get("RECOMMEND_DISABLE_AUTO_SYNC") == "1":
@@ -650,7 +633,7 @@ def auto_sync_on_start(config: AppConfig, preset: str) -> SyncRunResult | None:
     if lock is None:
         return None
     with lock:
-        if state["started"]:
+        if state.get("started", False):
             cached = state["result"]
             if state["preset"] == preset and isinstance(cached, SyncRunResult):
                 st.caption(f"本次服务启动已完成自动同步：{cached.finished_at or '已完成'}")
@@ -663,21 +646,26 @@ def auto_sync_on_start(config: AppConfig, preset: str) -> SyncRunResult | None:
         return run
 
 
-def sync_panel(config: AppConfig, preset: str) -> SyncRunResult | None:
+def sync_panel(config: AppConfig, preset: str) -> SyncRunResult | None:  # background-safe
     st.markdown("<div class='section-label'>Manual sync</div>", unsafe_allow_html=True)
     sync_col, hint_col = st.columns([1, 3])
     with sync_col:
-        clicked = st.button("再次同步全部数据", type="primary", width="stretch")
+        clicked = st.button("再次同步全部数据", type="primary", width="stretch", key="sync_button")
     with hint_col:
         st.markdown(
-            "<div class='data-note'>服务启动已自动同步；需要立即重试或切换预置时，"
-            "可再次同步全部数据。收盘前自动使用最近完整交易日，15:30 后重试才会抓取当天"
-            "题材、龙虎榜、两融和板块快照。每次同步都会自动留证并更新前向验证。</div>",
+            "<div class='data-note'>服务启动或手动同步会先检查同步时段。工作日 09:30–15:30 "
+            "暂停同步并只读最近完整交易日；每日 16:00 收盘后任务运行。只有当天收盘数据已确认时，"
+            "才生成推荐和前向留证。</div>",
             unsafe_allow_html=True,
         )
-    if not clicked:
+    if not clicked:  # no blocking sync
         return None
-    return run_sync_with_feedback(config, preset)
+    started = start_background_sync(config, preset)
+    if started:
+        st.info("已启动后台同步；页面不会被网络请求阻塞，同步完成后会自动刷新。")
+    else:
+        st.warning("已有同步任务正在执行，请等待当前任务结束。")
+    return None
 
 
 def main() -> None:
@@ -696,11 +684,24 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    auto_synced = auto_sync_on_start(config, preset)
+    auto_sync_on_start(config, preset)
     manually_synced = sync_panel(config, preset)
-    synced = manually_synced or auto_synced
+    render_background_sync_status(st)
+    background_snapshot = background_sync_snapshot()
+    background_result = background_snapshot.get("result")
+    synced = manually_synced or (
+        background_result
+        if background_snapshot.get("preset") == preset
+        and isinstance(background_result, SyncRunResult)
+        else None
+    )
     if synced is not None and synced.screen is not None:
         result = synced.screen
+    elif background_snapshot.get("running"):
+        st.info(
+            "启动同步正在后台执行；首屏已打开，推荐清单会在同步完成后自动刷新。"
+        )
+        return
     else:
         try:
             result = build_local_screen(config, preset)

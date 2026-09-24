@@ -73,7 +73,8 @@ RANK_MEMBERS: dict[str, tuple[str, ...]] = {
     ),
     "risk": ("volatility_value", "drawdown_value", "downside_volatility_value"),
     "theme": ("theme_heat_max", "theme_days_20"),
-    "capital": ("lhb_net_buy_rel", "main_net_inflow"),
+    # 两融是可回溯的资金确认因子；当日主力净额仍只在题材接口返回时有值。
+    "capital": ("lhb_net_buy_rel", "main_net_inflow", "margin_rz_chg_20"),
     "liquidity": ("turnover_value_20",),
 }
 
@@ -114,6 +115,7 @@ FACTOR_LABELS: dict[str, str] = {
     "theme_days_20": "题材上榜天数",
     "lhb_net_buy_rel": "龙虎榜净买强度",
     "main_net_inflow": "当日主力净额",
+    "margin_rz_chg_20": "20 日融资余额变化",
     "turnover_value_20": "成交额",
 }
 

@@ -21,6 +21,8 @@ from datetime import date
 
 import pandas as pd
 
+from .calendar_risk import preholiday_window
+
 OPERATION_COLUMNS = (
     "operation_weekday",
     "operation_signal",
@@ -271,6 +273,12 @@ def add_operation_plan(frame: pd.DataFrame, *, as_of: str | None = None) -> pd.D
     )
     for column in OPERATION_COLUMNS:
         out[column] = plans[column]
+    holiday_window = preholiday_window(as_of)
+    if holiday_window:
+        note = holiday_window.operation_note(str(as_of)[:10])
+        out["operation_reason"] = out["operation_reason"].map(
+            lambda reason: f"{'' if pd.isna(reason) else str(reason).strip()} {note}".strip()
+        )
     return out
 
 

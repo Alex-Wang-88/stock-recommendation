@@ -161,6 +161,35 @@ def test_empty_and_failed_are_recorded_separately(tmp_path) -> None:
         store.close()
 
 
+def test_upsert_returns_deduplicated_row_count(tmp_path) -> None:
+    store = _store(tmp_path)
+    try:
+        frame = _theme_frame().iloc[[0, 0]].copy()
+        frame["trade_date"] = "2026-09-18"
+        assert store.upsert(
+            "theme_attribution",
+            frame,
+            tuple(frame.columns),
+        ) == 1
+    finally:
+        store.close()
+
+
+def test_retryable_dates_include_internal_holes_and_recent_empty(tmp_path) -> None:
+    store = _store(tmp_path)
+    try:
+        store.write_themes(_theme_frame(), "2026-09-17")
+        store.record_run(
+            "backfill-themes", "2026-09-18", datetime.now(UTC), 0, "EMPTY"
+        )
+        days = ["2026-09-17", "2026-09-18", "2026-09-19"]
+        assert store.retryable_dates(
+            "theme_attribution", days, task="backfill-themes"
+        ) == ["2026-09-18", "2026-09-19"]
+    finally:
+        store.close()
+
+
 def test_archived_dates_drives_resume(tmp_path) -> None:
     store = _store(tmp_path)
     try:

@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "allowed_categories": [
+    "dividend",
+    "earnings",
+    "ignore",
+    "index_change",
+    "major_contract",
+    "major_event",
+    "pledge",
+    "regulatory",
+    "repurchase",
+    "shareholder_increase",
+    "shareholder_reduction",
+    "uncertain",
+    "unlock"
+  ],
+  "items": [
+    {
+      "exchange": "SSE",
+      "announcement_id": "9c055130fceeb0621a82693a4cea2698",
+      "symbol": "600720",
+      "company_name": "中交设计",
+      "announcement_date": "2026-09-16T00:00:00",
+      "title": "中交设计关于履行避免同业竞争承诺进展暨受托管理控股股东、实际控制人相关资产的公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-16/600720_20260916_1H4B.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "ac3d66d04b699fef13d70e5fbab750bd",
+      "symbol": "688322",
+      "company_name": "奥比中光",
+      "announcement_date": "2026-09-16T00:00:00",
+      "title": "对外担保管理制度",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-16/688322_20260916_23AW.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "b2d1198dabd758edfe5297dc9c7a2b4b",
+      "symbol": "600714",
+      "company_name": "金瑞矿业",
+      "announcement_date": "2026-09-16T00:00:00",
+      "title": "青海金瑞矿业发展股份有限公司关于2026年度日常关联交易预计的公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-16/600714_20260916_76BH.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "b397554dd8324e5b5658e69773a5296d",
+      "symbol": "688004",
+      "company_name": "博汇科技",
+      "announcement_date": "2026-09-16T00:00:00",
+      "title": "博汇科技关于股票交易异常波动公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-16/688004_20260916_OC0S.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "bc255d7d2290048824542cbd5ff59b18",
+      "symbol": "603090",
+      "company_name": "宏盛股份",
+      "announcement_date": "2026-09-16T00:00:00",
+      "title": "宏盛股份股票交易异常波动公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-16/603090_20260916_8J3P.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "bc9d90fb14bd0c6a04315f907e7c0cae",
+      "symbol": "688076",
+      "company_name": "ST诺泰",
+      "announcement_date": "2026-09-16T00:00:00",
+      "title": "ST诺泰：关于全资子公司购买资产暨关联交易的公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-16/688076_20260916_NCML.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "c17577ab15b5253babcfb4a5e264b807",
+      "symbol": "688779",
+      "company_name": "五矿新能",
+      "announcement_date": "2026-09-16T00:00:00",
+      "title": "五矿新能源材料（湖南）股份有限公司关于全资子公司诉讼进展的公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-16/688779_20260916_P61R.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "c2cc0b2905ece4131ab4585324d81997",
+      "symbol": "603407",
+      "company_name": "长裕集团",
+      "announcement_date": "2026-09-16T00:00:00",
+      "title": "长裕控股集团股份有限公司关于新增公司2026年度日常关联交易预计的公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-16/603407_20260916_FX4H.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "cfe6c6cd8273a5578b0e00ac02b7f7db",
+      "symbol": "603429",
+      "company_name": "*ST集友",
+      "announcement_date": "2026-09-16T00:00:00",
+      "title": "华福证券股份有限公司关于安徽集友新材料股份有限公司重大资产购买暨关联交易之独立财务顾问报告（修订稿）",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-16/603429_20260916_6BC9.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "d562d011ff6155480b4f18e8a4a618cf",
+      "symbol": "688733",
+      "company_name": "壹石通",
+      "announcement_date": "2026-09-16T00:00:00",
+      "title": "壹石通关于2026年度向特定对象发行A股股票摊薄即期回报及填补措施和相关主体承诺的公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-16/688733_20260916_SNDV.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "d76019940c628ccba5eb4519bfd44f61",
+      "symbol": "601800",
+      "company_name": "中国交建",
+      "announcement_date": "2026-09-16T00:00:00",
+      "title": "中国交建关于变更避免与中交设计咨询集团股份有限公司同业竞争承诺的公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-16/601800_20260916_HCBZ.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "dc20fb30ae10b777d1c750c7075c8ca7",
+      "symbol": "600370",
+      "company_name": "*ST三房",
+      "announcement_date": "2026-09-16T00:00:00",
+      "title": "江苏三房巷聚材股份有限公司关于公司及下属公司累计诉讼、仲裁的进展公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-16/600370_20260916_3D1O.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "dc6407b1be52e8c9899ded7acf56eb9f",
+      "symbol": "600821",
+      "company_name": "金开新能",
+      "announcement_date": "2026-09-16T00:00:00",
+      "title": "关于对外投资设立基金暨关联交易的进展公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-16/600821_20260916_AAQC.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "def022d03f65a30e25b25b028900605f",
+      "symbol": "600720",
+      "company_name": "中交设计",
+      "announcement_date": "2026-09-16T00:00:00",
+      "title": "中交设计关于控股股东及实际控制人拟变更避免同业竞争承诺的公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-16/600720_20260916_9RSL.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "ef4e786f7f816cc8463eed89e540e3e6",
+      "symbol": "605588",
+      "company_name": "冠石科技",
+      "announcement_date": "2026-09-16T00:00:00",
+      "title": "中信建投证券股份有限公司关于南京冠石科技股份有限公司向特定对象发行股票会后事项承诺函",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-16/605588_20260916_QP1K.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "fa766e79ee0a4b7302db2ef5d4332bdd",
+      "symbol": "600903",
+      "company_name": "贵州燃气",
+      "announcement_date": "2026-09-16T00:00:00",
+      "title": "贵州燃气集团股份有限公司关于发行股份购买资产并募集配套资金暨关联交易事项获得贵州省国资委批复的公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-16/600903_20260916_IW6V.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "fc740ce68ffbf4ad0f66abbe7ba082f9",
+      "symbol": "603169",
+      "company_name": "兰石重装",
+      "announcement_date": "2026-09-16T00:00:00",
+      "title": "兰石重装关于累计诉讼、仲裁事项的公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-16/603169_20260916_8P9Q.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "018f4dbdb0a7c75e44340f241678c511",
+      "symbol": "688253",
+      "company_name": "英诺特",
+      "announcement_date": "2026-09-17T00:00:00",
+      "title": "科创板上市公司独立董事候选人声明与承诺（卿小权）",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-17/688253_20260917_FSTM.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "0af0c1d1fd832b29ec4ca99c7edfce32",
+      "symbol": "600085",
+      "company_name": "同仁堂",
+      "announcement_date": "2026-09-17T00:00:00",
+      "title": "同仁堂 控股股东关于解决和避免与公司同业竞争承诺函的公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-17/600085_20260917_85PZ.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "1c3db9b0cf5950bc7ec205e28b3c5ed0",
+      "symbol": "600712",
+      "company_name": "南宁百货",
+      "announcement_date": "2026-09-17T00:00:00",
+      "title": "南宁百货大楼股份有限公司股票交易异常波动公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-17/600712_20260917_IMZR.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "228e2fd8c005a7458c23572c62d9c20a",
+      "symbol": "601579",
+      "company_name": "会稽山",
+      "announcement_date": "2026-09-17T00:00:00",
+      "title": "会稽山绍兴酒股份有限公司股票交易异常波动公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-17/601579_20260917_IWVJ.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "28c14eb6beb7cc12a589a1414efa7465",
+      "symbol": "688692",
+      "company_name": "达梦数据",
+      "announcement_date": "2026-09-17T00:00:00",
+      "title": "关于公司诉讼进展的公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-17/688692_20260917_MJG6.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "2e6741a0a40cf348c71281236fdf6ecb",
+      "symbol": "600618",
+      "company_name": "氯碱化工",
+      "announcement_date": "2026-09-17T00:00:00",
+      "title": "独立董事候选人声明与承诺",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-17/600618_20260917_NTJT.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "3e8150e17b8f66935a0dc8f36cce273a",
+      "symbol": "603248",
+      "company_name": "锡华科技",
+      "announcement_date": "2026-09-17T00:00:00",
+      "title": "江苏锡华新能源科技股份有限公司关于股票交易异常波动的公告",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-17/603248_20260917_TBZF.pdf"
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "44e85c4d3ab5f5e5bf9e09efb5cb6232",
+      "symbol": "688253",
+      "company_name": "英诺特",
+      "announcement_date": "2026-09-17T00:00:00",
+      "title": "科创板上市公司独立董事提名人声明与承诺（卿小权）",
+      "url": "https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-09-17/688253_20260917_DBXZ.pdf"
+    }
+  ]
+}

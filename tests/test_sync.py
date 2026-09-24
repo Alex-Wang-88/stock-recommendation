@@ -77,7 +77,7 @@ def test_manual_sync_runs_all_stages_and_persists_local_report(
     assert [event.fraction for event in events] == sorted(event.fraction for event in events)
 
 
-def test_auto_backfill_window_starts_after_last_archived_date(tmp_path):
+def test_auto_backfill_window_fills_internal_holes_before_tail(tmp_path):
     archive_path = tmp_path / "archive.duckdb"
     with ArchiveStore(archive_path) as archive:
         archive.upsert(
@@ -117,7 +117,7 @@ def test_auto_backfill_window_starts_after_last_archived_date(tmp_path):
             "dragon_tiger",
             ["2026-09-16", "2026-09-17", "2026-09-18"],
             "2024-09-01",
-        ) == ("2026-09-18", 1, "2026-09-17")
+        ) == ("2026-09-16", 2, "2026-09-17")
 
 
 def test_auto_backfill_window_uses_fallback_only_for_empty_table(tmp_path):

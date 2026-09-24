@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import logging
 import sys
@@ -31,6 +32,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from .announcements import apply_classifications
 from .archive import (
     ArchiveStore,
     backfill_dragon_tiger,
@@ -41,13 +43,14 @@ from .archive import (
     snapshot_all,
     symbols_from_themes,
 )
-from .bars import advance_bars, local_now
+from .bars import advance_bars, local_now, symbols_for_refresh
 from .config import AppConfig
 from .context import ScreenContext
 from .factors import FACTOR_CATEGORY, ID_COLUMNS
-from .forward import append_record, build_record, evaluate_and_persist
+from .forward import append_record, build_record, evaluate_and_persist, spec_fingerprint
 from .http import ThrottledClient
-from .market import MarketStore, is_current_eod_ready
+from .locking import SyncAlreadyRunning, sync_lock
+from .market import MarketStore, intraday_sync_block_reason, is_current_eod_ready
 from .report import render_markdown, to_display
 from .screen import FILTER_FIELDS, Spec, SpecError, run_screen
 from .screen.presets import PRESETS, load_preset
@@ -68,10 +71,49 @@ def _store(config: AppConfig) -> ArchiveStore:
     return ArchiveStore(config.archive_db)
 
 
+def cmd_apply_announcement_classifications(
+    config: AppConfig, args: argparse.Namespace
+) -> int:
+    """Apply title-only labels returned by the existing Plus automation."""
+
+    try:
+        with sync_lock(Path(config.logs_dir) / "sync.lock"):
+            with ArchiveStore(config.archive_db) as archive:
+                applied, ignored, unmatched = apply_classifications(
+                    archive, args.input, reports_dir=config.reports_dir
+                )
+    except SyncAlreadyRunning as error:
+        print(f"❌ {error}", file=sys.stderr)
+        return 1
+    except Exception as error:  # noqa: BLE001 - invalid model output stays pending
+        print(f"❌ 公告分类未应用：{type(error).__name__}: {error}", file=sys.stderr)
+        return 1
+    print(
+        f"公告分类写入完成：已分类 {applied} 条，忽略 {ignored} 条，"
+        f"已处理或不存在 {unmatched} 条；剩余待分类项见队列文件。"
+    )
+    return 0
+
+
 def _split_symbols(value: str | None) -> list[str]:
     if not value:
         return []
     return [item.strip().zfill(6) for item in value.split(",") if item.strip()]
+
+
+def _advance_bars(config: AppConfig, store: MarketStore, workers: int):
+    kwargs = {"workers": workers}
+    try:
+        parameters = inspect.signature(advance_bars).parameters
+    except (TypeError, ValueError):
+        parameters = {}
+    accepts_symbols = "symbols" in parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
+    if accepts_symbols and Path(config.market.instrument_parquet).exists():
+        kwargs["symbols"] = symbols_for_refresh(store, config.market.instrument_parquet)
+    return advance_bars(store, **kwargs)
 
 
 # --------------------------------------------------------------------------- #
@@ -94,6 +136,15 @@ def cmd_probe(config: AppConfig, _args: argparse.Namespace) -> int:
 
 
 def cmd_backfill(config: AppConfig, args: argparse.Namespace) -> int:
+    try:
+        with sync_lock(Path(config.logs_dir) / "sync.lock"):
+            return _cmd_backfill_unlocked(config, args)
+    except SyncAlreadyRunning as error:
+        print(f"❌ {error}", file=sys.stderr)
+        return 1
+
+
+def _cmd_backfill_unlocked(config: AppConfig, args: argparse.Namespace) -> int:
     store = _store(config)
     client = _client(config)
     try:
@@ -124,10 +175,19 @@ def cmd_backfill(config: AppConfig, args: argparse.Namespace) -> int:
         store.close()
 
     print(result.summary())
-    return 1 if result.failed and not result.ok else 0
+    return 1 if result.failed or result.rejected else 0
 
 
 def cmd_snapshot(config: AppConfig, args: argparse.Namespace) -> int:
+    try:
+        with sync_lock(Path(config.logs_dir) / "sync.lock"):
+            return _cmd_snapshot_unlocked(config, args)
+    except SyncAlreadyRunning as error:
+        print(f"❌ {error}", file=sys.stderr)
+        return 1
+
+
+def _cmd_snapshot_unlocked(config: AppConfig, args: argparse.Namespace) -> int:
     """T2 当日快照。
 
     ⚠️ 日期**必须**来自行情归档的交易日，不能用系统日期：
@@ -150,7 +210,7 @@ def cmd_snapshot(config: AppConfig, args: argparse.Namespace) -> int:
         store.close()
     for result in results:
         print(result.summary())
-    return 1 if any(result.failed for result in results) else 0
+    return 1 if any(result.failed or result.rejected for result in results) else 0
 
 
 def cmd_status(config: AppConfig, _args: argparse.Namespace) -> int:
@@ -184,7 +244,7 @@ def cmd_sync_all(config: AppConfig, args: argparse.Namespace) -> int:
         print(f"{step.status.upper():8} {step.label}：{step.summary}")
         if step.detail:
             print(f"           {step.detail}")
-    return 0 if run.ok else 1
+    return 0 if run.exit_ok else 1
 
 
 def cmd_quality(config: AppConfig, _args: argparse.Namespace) -> int:
@@ -212,6 +272,15 @@ def cmd_quality(config: AppConfig, _args: argparse.Namespace) -> int:
 
 
 def cmd_purge(config: AppConfig, args: argparse.Namespace) -> int:
+    try:
+        with sync_lock(Path(config.logs_dir) / "sync.lock"):
+            return _cmd_purge_unlocked(config, args)
+    except SyncAlreadyRunning as error:
+        print(f"❌ {error}", file=sys.stderr)
+        return 1
+
+
+def _cmd_purge_unlocked(config: AppConfig, args: argparse.Namespace) -> int:
     """按日清除已确认被污染的记录（清除后可重跑回补）。"""
 
     dates = [item.strip() for item in args.dates.split(",") if item.strip()]
@@ -251,6 +320,15 @@ def cmd_themes(config: AppConfig, args: argparse.Namespace) -> int:
 
 
 def cmd_sync_bars(config: AppConfig, args: argparse.Namespace) -> int:
+    try:
+        with sync_lock(Path(config.logs_dir) / "sync.lock"):
+            return _cmd_sync_bars_unlocked(config, args)
+    except SyncAlreadyRunning as error:
+        print(f"❌ {error}", file=sys.stderr)
+        return 1
+
+
+def _cmd_sync_bars_unlocked(config: AppConfig, args: argparse.Namespace) -> int:
     """从既有归档一次性引导本项目自己的日线。
 
     这是本项目唯一「借用」量化项目的东西：**上游原始行情**。
@@ -311,14 +389,21 @@ def _load_spec(args: argparse.Namespace) -> dict:
     raise SpecError("需要 --spec / --spec-file / --preset 之一")
 
 
-def _persist_report(result, out: Path) -> None:
+def _persist_report(result, out: Path, *, sync_run_id: str = "") -> None:
     """报告落盘：Markdown（人看）+ CSV（机器看）。
 
     ⚠️ CSV 用 `utf-8-sig`：不加 BOM 的话 Excel 打开中文列名会是乱码。
     """
 
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render_markdown(result), encoding="utf-8")
+    out.write_text(
+        render_markdown(
+            result,
+            spec_hash=spec_fingerprint(result.spec),
+            sync_run_id=sync_run_id,
+        ),
+        encoding="utf-8",
+    )
     print(f"\n📄 报告已写入 {out}")
     csv_path = out.with_suffix(".csv")
     result.frame.to_csv(csv_path, index=False, encoding="utf-8-sig")
@@ -383,7 +468,13 @@ def _forward_dir(config: AppConfig, override: str | None) -> Path:
     return Path(override) if override else Path(config.reports_dir) / "forward"
 
 
-def _screen_and_record(config: AppConfig, args: argparse.Namespace, as_of: str) -> int:
+def _screen_and_record(
+    config: AppConfig,
+    args: argparse.Namespace,
+    as_of: str,
+    *,
+    sync_run_id: str = "",
+) -> int:
     """按冻结 spec 筛选指定 as-of，并把**留证**落盘。返回退出码。
 
     为什么必须留证而不是"每天看一眼就算"：T2 类数据（题材热度 / 龙虎榜 / 两融）
@@ -417,7 +508,7 @@ def _screen_and_record(config: AppConfig, args: argparse.Namespace, as_of: str) 
     for note in result.notes:
         print(f"  ! {note}")
 
-    record = build_record(result, run_at=local_now())
+    record = build_record(result, run_at=local_now(), sync_run_id=sync_run_id)
     directory = _forward_dir(config, args.forward_dir)
     record_path, journal_path = append_record(directory, record)
     print(f"📌 留证 {record_path}")
@@ -433,12 +524,29 @@ def _screen_and_record(config: AppConfig, args: argparse.Namespace, as_of: str) 
     if not grouped.empty:
         print(grouped.to_string(index=False))
 
-    out = Path(args.out) if args.out else Path(config.reports_dir) / f"{result.as_of}.md"
-    _persist_report(result, out)
+    out = (
+        Path(args.out)
+        if args.out
+        else Path(config.reports_dir) / f"{result.as_of}__{spec_fingerprint(result.spec)}.md"
+    )
+    _persist_report(result, out, sync_run_id=sync_run_id)
     return 0
 
 
 def cmd_daily_advance(config: AppConfig, args: argparse.Namespace) -> int:
+    block_reason = intraday_sync_block_reason()
+    if block_reason:
+        print(f"⏭️ {block_reason}")
+        return 0
+    try:
+        with sync_lock(Path(config.logs_dir) / "sync.lock"):
+            return _cmd_daily_advance_unlocked(config, args)
+    except SyncAlreadyRunning as error:
+        print(f"❌ {error}", file=sys.stderr)
+        return 1
+
+
+def _cmd_daily_advance_unlocked(config: AppConfig, args: argparse.Namespace) -> int:
     """一个交易日的前向纸盘：推进行情 → 按冻结 spec 筛选 → 留证。"""
 
     with MarketStore(config.market.daily_parquet) as store:
@@ -448,12 +556,21 @@ def cmd_daily_advance(config: AppConfig, args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-        advance = advance_bars(store, workers=args.workers)
+        advance = _advance_bars(config, store, args.workers)
         print(advance.summary())
         # 收盘前不能把盘中日线当成完整 as-of；收盘后才使用当天日期。
         as_of = store.latest_complete_trade_date()
 
     if args.no_screen:
+        return 0
+    if not (advance.up_to_date or advance.rows):
+        print("⏭️ 行情推进未确认完成，本次不生成前向推荐。")
+        return 0
+    if not is_current_eod_ready(as_of):
+        print(
+            f"⏭️ 最新完整行情日为 {as_of}，不是今天已确认收盘的数据；"
+            "本次不补造历史前向推荐。"
+        )
         return 0
     return _screen_and_record(config, args, as_of)
 
@@ -513,7 +630,7 @@ def _registered_daily_job(config: AppConfig, args: argparse.Namespace) -> int:
     print("\n=== 每日归档任务汇总 ===")
     for step in run.steps:
         print(f"  · {step.status.upper()} {step.label}：{step.summary}")
-    return 0 if run.ok else 1
+    return 0 if run.exit_ok else 1
 
 
 def _trade_date_from_archive(config: AppConfig) -> str:
@@ -540,6 +657,25 @@ def _latest_archived_date(store: ArchiveStore, table: str) -> str | None:
 
 
 def cmd_daily_job(config: AppConfig, args: argparse.Namespace) -> int:
+    block_reason = intraday_sync_block_reason()
+    if block_reason:
+        print(f"⏭️ {block_reason}")
+        return 0
+    custom_request = any(
+        getattr(args, name, None)
+        for name in ("spec", "spec_file", "theme", "out", "forward_dir")
+    )
+    if not custom_request:
+        return _registered_daily_job(config, args)
+    try:
+        with sync_lock(Path(config.logs_dir) / "sync.lock"):
+            return _cmd_daily_job_unlocked(config, args)
+    except SyncAlreadyRunning as error:
+        print(f"❌ {error}", file=sys.stderr)
+        return 1
+
+
+def _cmd_daily_job_unlocked(config: AppConfig, args: argparse.Namespace) -> int:
     """每日归档任务 —— **一次跑齐三类数据，各步互不拖累**。
 
     三步的"可恢复性"完全不同，所以失败处理也必须不同：
@@ -563,7 +699,7 @@ def cmd_daily_job(config: AppConfig, args: argparse.Namespace) -> int:
         getattr(args, name, None)
         for name in ("spec", "spec_file", "theme", "out", "forward_dir")
     )
-    if config.fundamentals.enabled and not custom_request:
+    if not custom_request:
         return _registered_daily_job(config, args)
 
     report: list[str] = []
@@ -577,13 +713,14 @@ def cmd_daily_job(config: AppConfig, args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-        advance = advance_bars(store, workers=args.workers)
-        print(advance.summary())
-        as_of = store.latest_complete_trade_date()
-        trade_dates = set(store.trade_dates(end=as_of))
+    advance = _advance_bars(config, store, args.workers)
+    print(advance.summary())
+    market_fresh = advance.up_to_date or bool(advance.rows)
+    as_of = store.latest_complete_trade_date()
+    trade_dates = set(store.trade_dates(end=as_of))
     report.append(f"行情：{advance.summary().splitlines()[0]}")
     # 抓取失败不判为致命：行情是 T0/T1，明天增量窗口会补回来。
-    if advance.up_to_date or advance.rows:
+    if market_fresh:
         pass
     else:
         ok = False
@@ -598,10 +735,10 @@ def cmd_daily_job(config: AppConfig, args: argparse.Namespace) -> int:
             last_theme = _latest_archived_date(store, "theme_attribution")
             # 只补**行情归档认定为交易日**的那些天：不会去试探节假日，
             # 也不会因为主题归档落后而漏补（区间从它自己最后一天之后开始）。
-            pending = sorted(
-                day
-                for day in trade_dates
-                if day <= as_of and (last_theme is None or day > last_theme)
+            pending = store.retryable_dates(
+                "theme_attribution",
+                sorted(day for day in trade_dates if day <= as_of),
+                task="backfill-themes",
             )
             if not pending:
                 report.append(f"题材：已是最新（止于 {last_theme}）")
@@ -621,7 +758,7 @@ def cmd_daily_job(config: AppConfig, args: argparse.Namespace) -> int:
     # -- 3. T2 快照（只有当日，补不回来） ----------------------------------- #
     if args.skip_snapshot:
         report.append("T2 快照：已跳过（--skip-snapshot）")
-    elif not is_current_eod_ready(as_of):
+    elif not market_fresh or not is_current_eod_ready(as_of):
         report.append(
             f"T2 快照：延后（{as_of} 不是当前已收盘日；请下一个交易日收盘后再同步）"
         )
@@ -644,14 +781,18 @@ def cmd_daily_job(config: AppConfig, args: argparse.Namespace) -> int:
                     f"T2 快照：{'❌ 失败' if failed else '✅ 完成'}"
                     f"（as-of {as_of}；**只有当日可取，失败即永久缺失**）"
                 )
-                # T2 失败**不**把整次任务判为失败 —— 否则调度器会一直重试，
-                # 而重试并不能把已经过去的那一天补回来。
+                if failed:
+                    ok = False
         finally:
             store.close()
 
     # -- 4. 筛选 + 留证（前向纸盘的核心产出） ------------------------------- #
     if args.no_screen:
         report.append("筛选留证：已跳过（--no-screen）")
+    elif not market_fresh or not is_current_eod_ready(as_of):
+        report.append(
+            f"筛选留证：跳过（最新完整行情日 {as_of} 不是今天已确认收盘的数据；不补造前向推荐）"
+        )
     else:
         print()
         code = _screen_and_record(config, args, as_of)
@@ -682,6 +823,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("probe", help="通路诊断（区分被封与端点问题）").set_defaults(
         func=cmd_probe
     )
+
+    apply_announcements = sub.add_parser(
+        "apply-announcement-classifications",
+        help="应用定时 Plus 任务返回的公告标题分类 JSON",
+    )
+    apply_announcements.add_argument("--input", required=True, help="分类结果 JSON 文件")
+    apply_announcements.set_defaults(func=cmd_apply_announcement_classifications)
 
     backfill = sub.add_parser("backfill", help="T1 历史回补")
     backfill.add_argument("source", choices=["themes", "dragon-tiger", "margin"])
@@ -751,7 +899,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     advance.add_argument("--preset", default=None, choices=sorted(PRESETS), help="预置条件名")
     advance.add_argument("--theme", default=None, help="逗号分隔的题材（配合 --preset）")
-    advance.add_argument("--out", default=None, help="报告路径（默认 data/reports/<as-of>.md）")
+    advance.add_argument(
+        "--out", default=None, help="报告路径（默认 data/reports/<as-of>__<spec>.md）"
+    )
     advance.add_argument("--forward-dir", default=None, help="留证目录（默认 reports/forward）")
     advance.add_argument("--workers", type=int, default=8, help="行情抓取并发数")
     advance.add_argument("--no-screen", action="store_true", help="只推进行情，不筛选")
@@ -768,7 +918,7 @@ def build_parser() -> argparse.ArgumentParser:
     job.add_argument("--spec-file", default=None, help="spec JSON 文件（建议用冻结文件）")
     job.add_argument("--preset", default=None, choices=sorted(PRESETS), help="预置条件名")
     job.add_argument("--theme", default=None, help="逗号分隔的题材（配合 --preset）")
-    job.add_argument("--out", default=None, help="报告路径（默认 data/reports/<as-of>.md）")
+    job.add_argument("--out", default=None, help="报告路径（默认 data/reports/<as-of>__<spec>.md）")
     job.add_argument("--forward-dir", default=None, help="留证目录（默认 reports/forward）")
     job.add_argument("--workers", type=int, default=8, help="行情抓取并发数")
     job.add_argument("--no-screen", action="store_true", help="跳过筛选留证")

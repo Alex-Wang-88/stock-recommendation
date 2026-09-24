@@ -1,0 +1,29 @@
+{
+  "items": [
+    {"exchange":"SSE","announcement_id":"05580ba69a996a49f90b3e804fd61fec","category":"major_event","summary":"标题涉及安徽集友重大资产购买及关联交易的补充法律意见书。","confidence":0.91},
+    {"exchange":"SSE","announcement_id":"07b37b57e3796b13183968e14d095f1c","category":"major_event","summary":"标题表明公司涉及诉讼事项有进展，具体内容未由标题说明。","confidence":0.76},
+    {"exchange":"SSE","announcement_id":"0b0cb4658d15a340df8a9fa920816f66","category":"ignore","summary":"股票交易异常波动提示公告。","confidence":0.95},
+    {"exchange":"SSE","announcement_id":"0bbd01c1b89ecc5abff6b6797dce7e53","category":"major_event","summary":"标题涉及全资子公司购买资产及关联交易的核查意见。","confidence":0.74},
+    {"exchange":"SSE","announcement_id":"1d4cfa714361a9de0d9e7c2644b74544","category":"ignore","summary":"股票交易异常波动提示公告。","confidence":0.95},
+    {"exchange":"SSE","announcement_id":"2446536984f11a5097d192fb32ec5fb7","category":"uncertain","summary":"标题为向特定对象发行股票会后事项承诺函，具体事项未由标题说明。","confidence":0.61},
+    {"exchange":"SSE","announcement_id":"2ce9347f0eef890de7f9a048fde20b5e","category":"major_event","summary":"标题涉及集友股份重大资产购买及关联交易报告书（修订稿）。","confidence":0.92},
+    {"exchange":"SSE","announcement_id":"2dbffe27bbbc2e13b313dd29fb4aed62","category":"ignore","summary":"股票交易异常波动提示公告。","confidence":0.95},
+    {"exchange":"SSE","announcement_id":"356e4eeee87b774fba6a521d897ea3db","category":"major_event","summary":"标题涉及向控股孙公司提供借款及关联交易。","confidence":0.78},
+    {"exchange":"SSE","announcement_id":"36b8abf63257b95ab31c8318cb4dbeed","category":"major_event","summary":"标题涉及集友股份重大资产购买及关联交易报告书（修订稿）。","confidence":0.92},
+    {"exchange":"SSE","announcement_id":"38c547e07c41021a25b51130193e94fd","category":"ignore","summary":"标题为独立董事候选人的声明与承诺文件。","confidence":0.79},
+    {"exchange":"SSE","announcement_id":"4a193640707c08afd29201c92f66efe1","category":"ignore","summary":"股票交易异常波动提示公告。","confidence":0.95},
+    {"exchange":"SSE","announcement_id":"4b45831d00c47eb4afd7e6913914e5ad","category":"uncertain","summary":"标题提及新增年度日常关联交易预计，具体事项未由标题说明。","confidence":0.58},
+    {"exchange":"SSE","announcement_id":"56f794bbaf67bf3cffc1cbbac1ecf49e","category":"major_event","summary":"标题涉及集友股份重大资产购买及关联交易报告书修订说明。","confidence":0.91},
+    {"exchange":"SSE","announcement_id":"5cebd76df7973e39a9a4e164cda530c1","category":"major_event","summary":"标题涉及控股孙公司增资扩股、放弃优先认购权及关联交易。","confidence":0.77},
+    {"exchange":"SSE","announcement_id":"674c9cb4e423d0e42ccdf415fc27727b","category":"uncertain","summary":"标题提及增加年度日常关联交易预计额度，具体事项未由标题说明。","confidence":0.57},
+    {"exchange":"SSE","announcement_id":"6efe6db141c9136cce49ed9dfb17d940","category":"ignore","summary":"股票交易异常波动提示公告。","confidence":0.95},
+    {"exchange":"SSE","announcement_id":"7393c4a77a4f303140fcb34efc371117","category":"major_event","summary":"标题涉及向控股孙公司提供借款及关联交易的核查意见。","confidence":0.77},
+    {"exchange":"SSE","announcement_id":"8074a57f757d22a90830a8edd6982a62","category":"major_event","summary":"标题涉及公司提起诉讼事项的判决结果，未说明判决内容。","confidence":0.77},
+    {"exchange":"SSE","announcement_id":"8b5c6c08114973d7fa9e27cec5f082f3","category":"uncertain","summary":"标题涉及发行可转债相关的摊薄回报措施及承诺修订文件。","confidence":0.64},
+    {"exchange":"SSE","announcement_id":"8d1b92f1403f18b16a0ed0b7a29f929b","category":"ignore","summary":"标题为独立董事候选人提名相关的声明与承诺文件。","confidence":0.79},
+    {"exchange":"SSE","announcement_id":"8f8bc7357d7a8217d357d5cb5f4171d4","category":"uncertain","summary":"标题涉及发行可转债相关的摊薄回报措施及承诺文件。","confidence":0.64},
+    {"exchange":"SSE","announcement_id":"91d8f636b73bed33171e9acbc68dc429","category":"uncertain","summary":"标题为向特定对象发行股票会后事项承诺函，具体事项未由标题说明。","confidence":0.61},
+    {"exchange":"SSE","announcement_id":"9494c6365cce9bfd623aa91fcb9582f7","category":"uncertain","summary":"标题为向特定对象发行股票会后事项承诺函，具体事项未由标题说明。","confidence":0.61},
+    {"exchange":"SSE","announcement_id":"9b095f935ca2362f20794de8a0edb065","category":"major_event","summary":"标题表明公司及全资子公司涉及诉讼事项有进展，具体内容未由标题说明。","confidence":0.75}
+  ]
+}

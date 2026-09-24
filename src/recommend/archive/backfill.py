@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 
 import pandas as pd
 
-from ..http import FetchError, ThrottledClient
+from ..http import ThrottledClient
 from .sources import (
     MARGIN_COLUMNS,
     DragonTigerWithFallbackSource,
@@ -65,6 +65,7 @@ def run_single(
     target: str,
     fetch: object,
     write: object,
+    sync_run_id: str | None = None,
 ) -> None:
     """执行单次抓取 + 写入，并把结果记进 `archive_runs`。
 
@@ -79,25 +80,40 @@ def run_single(
         # 只是上游用"返回别人的快照"而不是"返回空"来表达。单独记一类 `REJECTED`，
         # 否则休市日会被当成正常交易日写进归档（实测污染过 38 天）。
         result.rejected += 1
-        store.record_run(task, target, started, 0, "REJECTED", str(exc))
+        store.record_run(task, target, started, 0, "REJECTED", str(exc), sync_run_id)
         logger.debug("%s %s 判定为无数据（上游回退）：%s", task, target, exc)
         return
-    except (FetchError, RuntimeError, ValueError) as exc:
+    except Exception as exc:  # noqa: BLE001 - 单日失败不能中断整批回补
         result.failed += 1
         result.failures.append((target, f"{type(exc).__name__}: {exc}"))
-        store.record_run(task, target, started, 0, "FAILED", str(exc))
+        store.record_run(task, target, started, 0, "FAILED", str(exc), sync_run_id)
         logger.warning("%s %s 失败：%s", task, target, exc)
         return
 
     if frame is None or frame.empty:
         result.empty += 1
-        store.record_run(task, target, started, 0, "EMPTY", "接口返回空（非交易日或数据未更新）")
+        store.record_run(
+            task,
+            target,
+            started,
+            0,
+            "EMPTY",
+            "接口返回空（非交易日或数据未更新）",
+            sync_run_id,
+        )
         return
 
-    written = write(frame)  # type: ignore[operator]
+    try:
+        written = write(frame)  # type: ignore[operator]
+    except Exception as exc:  # noqa: BLE001 - 写入失败必须进入归档账本
+        result.failed += 1
+        result.failures.append((target, f"写入 {type(exc).__name__}: {exc}"))
+        store.record_run(task, target, started, 0, "FAILED", str(exc), sync_run_id)
+        logger.warning("%s %s 写入失败：%s", task, target, exc)
+        return
     result.ok += 1
     result.rows += int(written)
-    store.record_run(task, target, started, int(written), "OK", "")
+    store.record_run(task, target, started, int(written), "OK", "", sync_run_id)
 
 
 def backfill_themes(
@@ -106,18 +122,23 @@ def backfill_themes(
     start: str,
     end: str,
     force: bool = False,
+    sync_run_id: str | None = None,
 ) -> BackfillResult:
     """回补题材归因（同花顺，按日期路径参数，实测可回溯到 2024-09 及更早）。"""
 
     source = ThemeSource(client)
     result = BackfillResult(task="backfill-themes")
-    done = set() if force else store.archived_dates("theme_attribution")
     days = candidate_dates(start, end)
+    pending = set(
+        store.retryable_dates(
+            "theme_attribution", days, task="backfill-themes", force=force
+        )
+    )
 
     # 长回补必须**打印进度**：几百个交易日 × ~1.5s 是十几分钟的黑箱，
     # 没有进度输出就没法判断"在正常跑"还是"卡住了"。
     for index, trade_date in enumerate(days, start=1):
-        if trade_date in done:
+        if trade_date not in pending:
             result.skipped += 1
         else:
             result.attempted += 1
@@ -128,6 +149,7 @@ def backfill_themes(
                 trade_date,
                 lambda day=trade_date: source.fetch(day),
                 lambda frame, day=trade_date: store.write_themes(frame, day),
+                sync_run_id,
             )
         if index % 20 == 0 or index == len(days):
             logger.info(
@@ -150,12 +172,12 @@ def backfill_dragon_tiger(
     start: str,
     end: str,
     force: bool = False,
+    sync_run_id: str | None = None,
 ) -> BackfillResult:
     """回补全市场龙虎榜（东财主源，新浪仅在主源失败时提供事件备用）。"""
 
     source = DragonTigerWithFallbackSource(client)
     result = BackfillResult(task="backfill-dragon-tiger")
-    done = set() if force else store.archived_dates("dragon_tiger")
     columns = (
         "trade_date",
         "symbol",
@@ -169,9 +191,14 @@ def backfill_dragon_tiger(
         "turnover_pct",
     )
     days = candidate_dates(start, end)
+    pending = set(
+        store.retryable_dates(
+            "dragon_tiger", days, task="backfill-dragon-tiger", force=force
+        )
+    )
 
     for index, trade_date in enumerate(days, start=1):
-        if trade_date in done:
+        if trade_date not in pending:
             result.skipped += 1
         else:
             result.attempted += 1
@@ -182,6 +209,7 @@ def backfill_dragon_tiger(
                 trade_date,
                 lambda day=trade_date: source.fetch(day),
                 lambda frame: store.upsert("dragon_tiger", frame, columns),
+                sync_run_id,
             )
         if index % 20 == 0 or index == len(days):
             logger.info(
@@ -203,6 +231,7 @@ def backfill_margin(
     client: ThrottledClient,
     symbols: list[str],
     page_size: int = 60,
+    sync_run_id: str | None = None,
 ) -> BackfillResult:
     """回补两融明细（**按标的逐只**，所以只对关注的标的跑）。"""
 
@@ -229,6 +258,7 @@ def backfill_margin(
             symbol,
             lambda code=symbol: source.fetch(code, page_size=page_size),
             lambda frame: store.upsert("margin_trading", frame, columns),
+            sync_run_id,
         )
     return result
 
@@ -239,6 +269,7 @@ def backfill_margin_exchange(
     start: str,
     end: str,
     force: bool = False,
+    sync_run_id: str | None = None,
 ) -> BackfillResult:
     """按交易日回补上交所 + 深交所官方两融明细。
 
@@ -248,11 +279,15 @@ def backfill_margin_exchange(
 
     source = OfficialMarginSource(client)
     result = BackfillResult(task="backfill-margin-exchange")
-    done = set() if force else store.archived_dates("margin_trading")
     days = candidate_dates(start, end)
+    pending = set(
+        store.retryable_dates(
+            "margin_trading", days, task="backfill-margin-exchange", force=force
+        )
+    )
 
     for index, trade_date in enumerate(days, start=1):
-        if trade_date in done:
+        if trade_date not in pending:
             result.skipped += 1
         else:
             result.attempted += 1
@@ -263,6 +298,7 @@ def backfill_margin_exchange(
                 trade_date,
                 lambda day=trade_date: source.fetch(day),
                 lambda frame: store.upsert("margin_trading", frame, MARGIN_COLUMNS),
+                sync_run_id,
             )
         if index % 20 == 0 or index == len(days):
             logger.info(

@@ -21,8 +21,9 @@
 ⚠️ 前复权序列会整体平移
 ---------------------
 前复权价随新的除权除息**整体重算**。所以增量追加时必须做**重叠比对**：
-把新拉的、与已存日重叠的那几根收盘价对一遍，不一致就说明该标的发生了公司行动，
-必须整窗重拉。否则会在除权日造出一个**虚假大跌** —— 而"低位"筛选恰好专挑这种票。
+把新拉的、与已存**历史日**重叠的那几根收盘价对一遍，不一致就说明该标的发生了公司行动，
+必须整窗重拉。当天的日线会在盘中和收盘后被刷新，不能拿它来判断前复权漂移；否则会把
+正常的当日涨跌误判成公司行动，并在除权日造出一个**虚假大跌** —— 而"低位"筛选恰好专挑这种票。
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 import requests
@@ -260,7 +262,6 @@ def advance_bars(
     codes = [str(symbol).zfill(6) for symbol in symbols]
 
     frames: list[pd.DataFrame] = []
-    stored_last: dict[str, str] = _stored_last_dates(store, codes)
 
     def pull(code: str, bars: int) -> tuple[str, pd.DataFrame | None]:
         for attempt in range(1, RETRIES + 1):
@@ -272,7 +273,38 @@ def advance_bars(
                 time.sleep(1.5 * attempt)
         return code, None  # pragma: no cover
 
-    batch = [(code, BOOTSTRAP_BARS if code not in stored_last else count) for code in codes]
+    stored_spans = _stored_spans(store, codes)
+    expected_dates = store.trade_dates()
+    if result.quote_date not in expected_dates:
+        expected_dates.append(result.quote_date)
+
+    batch: list[tuple[str, int]] = []
+    for code in codes:
+        span = stored_spans.get(code)
+        if span is None:
+            request_count = BOOTSTRAP_BARS
+        else:
+            stored_count, first_date, last_date = span
+            historical_dates = [
+                day for day in expected_dates if first_date <= day <= last_date
+            ]
+            has_interior_gap = stored_count < len(historical_dates)
+            new_dates = [day for day in expected_dates if day > last_date]
+            if has_interior_gap:
+                # Pull from the first locally stored date to the current source
+                # date so an interior hole cannot become invisible after the
+                # latest date is appended.
+                request_count = max(
+                    count,
+                    len([day for day in expected_dates if day >= first_date]) + 2,
+                )
+            elif new_dates:
+                # Downtime is handled by requesting the whole missing tail plus
+                # overlap, not by assuming that 15 bars always covers it.
+                request_count = max(count, len(new_dates) + 2)
+            else:
+                request_count = count
+        batch.append((code, request_count))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for index, (code, frame) in enumerate(
             pool.map(lambda item: pull(*item), batch), start=1
@@ -280,7 +312,7 @@ def advance_bars(
             if frame is None or frame.empty:
                 result.failed.append(code)
             else:
-                if code not in stored_last:
+                if code not in stored_spans:
                     result.symbols_new += 1
                 frames.append(frame)
             if progress:
@@ -289,7 +321,9 @@ def advance_bars(
                 print(f"  … 第一遍 {index}/{len(batch)}", flush=True)
 
     # 第二遍：公司行动整窗重拉
-    drifted = [code for code in _find_drifted(store, frames) ]
+    # 当天日线可能已经在盘中写入过一次，收盘后刷新时价格变化是正常行情，
+    # 不能把它当成前复权序列漂移。公司行动检测只比较 quote_date 之前的完整历史日。
+    drifted = [code for code in _find_drifted(store, frames, before_date=result.quote_date)]
     if drifted:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             for index, (code, frame) in enumerate(
@@ -340,6 +374,51 @@ def _known_symbols(store: MarketStore) -> list[str]:
     )
 
 
+def symbols_for_refresh(
+    store: MarketStore, reference_source: str | Path | None = None
+) -> list[str]:
+    """Union local symbols with the project's local instrument reference.
+
+    The old implementation only refreshed symbols already present in the
+    Parquet file, which made every new listing invisible forever.  Keeping the
+    existing symbols in the union also preserves historical/delisted rows.
+    """
+
+    symbols = set(_known_symbols(store))
+    if reference_source is not None:
+        meta = store.symbol_meta(reference_source)
+        if not meta.empty and "symbol" in meta.columns:
+            symbols.update(meta["symbol"].astype(str).str.zfill(6).tolist())
+    return sorted(symbols)
+
+
+def _stored_spans(store: MarketStore, codes: list[str]) -> dict[str, tuple[int, str, str]]:
+    """Return row count and date span for each symbol in the local archive."""
+
+    if not store.ready or not codes:
+        return {}
+    frame = store.conn.execute(
+        f"""
+        select cast(symbol as varchar) as symbol,
+               count(distinct trade_date) as day_count,
+               min(trade_date) as first_date,
+               max(trade_date) as last_date
+        from '{store.path.as_posix()}'
+        group by symbol
+        """
+    ).df()
+    wanted = set(codes)
+    return {
+        str(row["symbol"]).zfill(6): (
+            int(row["day_count"]),
+            str(row["first_date"])[:10],
+            str(row["last_date"])[:10],
+        )
+        for _, row in frame.iterrows()
+        if str(row["symbol"]).zfill(6) in wanted
+    }
+
+
 def _stored_last_dates(store: MarketStore, codes: list[str]) -> dict[str, str]:
     if not store.ready:
         return {}
@@ -355,8 +434,17 @@ def _stored_last_dates(store: MarketStore, codes: list[str]) -> dict[str, str]:
     }
 
 
-def _find_drifted(store: MarketStore, frames: list[pd.DataFrame]) -> list[str]:
-    """找出"新拉的重叠日期收盘价与库内不一致"的标的（前复权被平移过）。"""
+def _find_drifted(
+    store: MarketStore,
+    frames: list[pd.DataFrame],
+    *,
+    before_date: str | None = None,
+) -> list[str]:
+    """找出历史重叠收盘价不一致的标的（前复权被平移过）。
+
+    ``before_date`` 是行情源当前日期。当天日线可能先以盘中快照写入，
+    收盘后再次抓取时必然会变化；因此公司行动检测只允许使用它之前的历史日。
+    """
 
     if not store.ready or not frames:
         return []
@@ -371,6 +459,10 @@ def _find_drifted(store: MarketStore, frames: list[pd.DataFrame]) -> list[str]:
     )
     if merged.empty:
         return []
+    if before_date:
+        merged = merged[merged["trade_date"] < pd.Timestamp(before_date)]
+        if merged.empty:
+            return []
     merged = merged[merged["close_old"].notna() & (merged["close_old"] != 0)]
     ratio = merged["close_new"] / merged["close_old"]
     drifted = merged.loc[(ratio - 1.0).abs() > CORPORATE_ACTION_TOLERANCE, "symbol"]
@@ -380,7 +472,7 @@ def _find_drifted(store: MarketStore, frames: list[pd.DataFrame]) -> list[str]:
 def local_now() -> str:
     """仅用于日志/文件名，**不用于给行情盖章**。"""
 
-    return datetime.now().isoformat(timespec="seconds")
+    return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
 __all__ = [
@@ -393,5 +485,6 @@ __all__ = [
     "fetch_kline",
     "local_now",
     "resolve_quote_date",
+    "symbols_for_refresh",
     "tencent_code",
 ]
