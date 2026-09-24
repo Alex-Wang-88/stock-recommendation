@@ -14,13 +14,39 @@ import duckdb
 import json
 import re
 import shutil
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from recommend.config import AppConfig  # noqa: E402
+from recommend.rank.score import FACTOR_LABELS, RANK_MEMBERS  # noqa: E402
+from recommend.screen.spec import FILTER_FIELDS  # noqa: E402
+
 REPORT_NAME = re.compile(
     r"(?P<as_of>\d{4}-\d{2}-\d{2})(?:__(?P<spec_hash>[0-9a-fA-F]{8,}))?\.csv$"
 )
+CATEGORY_LABELS = {
+    "industry": "行业",
+    "growth": "增长",
+    "quality": "财务质量",
+    "valuation": "估值",
+    "momentum": "动量",
+    "risk": "风险",
+    "theme": "题材",
+    "capital": "资金",
+    "liquidity": "流动性",
+}
+SCREEN_FILTER_LABELS = {
+    "close_position_250": "近 250 日收盘区间位置",
+    "dist_to_52w_high": "距近 250 日最高收盘的回撤",
+    "history_days": "有效行情历史",
+    "listed_days": "上市天数",
+    "turnover_value_20": "近 20 日日均成交额",
+    "volume_trend_20": "近 5 日均量 / 近 20 日均量",
+}
 NUMERIC_FIELDS = (
     "close",
     "score",
@@ -105,6 +131,97 @@ def _public_recommendations(report_path: Path) -> list[dict[str, object]]:
         if item.get("symbol"):
             items.append(item)
     return items
+
+
+def _public_strategy() -> list[dict[str, object]]:
+    """Expose the active configured scoring categories and their member factors."""
+    config = AppConfig.load(ROOT / "config" / "default.toml")
+    weights = config.rank.as_dict()
+    total = sum(weights.values())
+    if total <= 0:
+        return []
+
+    return [
+        {
+            "key": category,
+            "label": CATEGORY_LABELS.get(category, category),
+            "weight": weight / total,
+            "factors": [
+                FACTOR_LABELS.get(factor, factor)
+                for factor in RANK_MEMBERS.get(category, ())
+            ],
+        }
+        for category, weight in sorted(weights.items(), key=lambda item: -item[1])
+    ]
+
+
+def _screening_rule_text(line: str) -> str | None:
+    text = line.removeprefix("- ").strip()
+    if text.startswith("数据截至 "):
+        return None
+    if text == "剔除 ST / 退市风险名称":
+        return "剔除 ST 与退市风险名称"
+
+    sort_match = re.fullmatch(r"按 (\S+) (降|升)序取前 (\d+) 条", text)
+    if sort_match:
+        sort_key, direction, limit = sort_match.groups()
+        sort_label = {"score": "综合得分", "ret_20": "20 日收益"}.get(sort_key, sort_key)
+        return f"按{sort_label}{'降' if direction == '降' else '升'}序，最多展示 {limit} 只"
+
+    filter_match = re.fullmatch(r"([a-zA-Z0-9_]+) ∈ (.+)", text)
+    if not filter_match:
+        return text or None
+
+    field, condition = filter_match.groups()
+    label = SCREEN_FILTER_LABELS.get(field, FILTER_FIELDS.get(field, field))
+    bound_match = re.fullmatch(
+        r"([≥≤])\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)",
+        condition,
+        re.IGNORECASE,
+    )
+    if not bound_match:
+        return f"{label}：{condition}"
+
+    operator, raw_value = bound_match.groups()
+    value = float(raw_value)
+    if field == "close_position_250":
+        return f"{label} {operator} {value * 100:.0f}%"
+    if field == "dist_to_52w_high":
+        threshold = f"{value * 100:.0f}%"
+        clarification = f"（低于高点至少 {abs(value) * 100:.0f}%）" if value < 0 else ""
+        return f"{label} {operator} {threshold}{clarification}"
+    if field == "turnover_value_20":
+        return f"{label} {operator} {value / 10_000:,.0f} 万元"
+    if field == "history_days":
+        return f"{label} {operator} {value:g} 个交易日"
+    if field == "listed_days":
+        return f"{label} {operator} {value:g} 天"
+    if field == "volume_trend_20":
+        return f"{label} {operator} {value:.2f} 倍"
+    return f"{label} {operator} {value:g}"
+
+
+def _public_screening_rules(report_path: Path | None) -> list[str]:
+    if report_path is None:
+        return []
+    markdown_path = report_path.with_suffix(".md")
+    if not markdown_path.is_file():
+        return []
+
+    lines: list[str] = []
+    in_filters = False
+    for raw_line in markdown_path.read_text(encoding="utf-8").splitlines():
+        stripped = raw_line.strip()
+        if stripped == "## 筛选条件":
+            in_filters = True
+            continue
+        if in_filters and stripped.startswith("## "):
+            break
+        if in_filters and stripped.startswith("- "):
+            formatted = _screening_rule_text(stripped)
+            if formatted:
+                lines.append(formatted)
+    return lines
 
 
 def _public_kline_bars(
@@ -245,6 +362,8 @@ def build_site(data_dir: Path, source_dir: Path, output_dir: Path) -> dict[str, 
         "qualified_count": qualified_count,
         "recommendations": recommendations,
         "evaluation": evaluation,
+        "strategy": _public_strategy(),
+        "screening_rules": _public_screening_rules(report_path),
         "notes": notes,
     }
 

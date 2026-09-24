@@ -24,6 +24,7 @@
       </a>
       <nav class="top-nav" aria-label="页面导航">
         <a href="#recommendations">候选清单</a>
+        <a href="#strategy">策略权重</a>
         <a href="#validation">前向验证</a>
         <a href="https://github.com/Alex-Wang-88/stock-recommendation" target="_blank" rel="noreferrer">项目说明</a>
       </nav>
@@ -62,7 +63,7 @@
         <article class="summary-card">
           <span class="summary-label">策略指纹</span>
           <strong id="spec-hash" class="summary-value hash-value">—</strong>
-          <span class="summary-footnote">规则相同才放在同一验证组</span>
+          <span class="summary-footnote">规则相同才放在同一验证组 · <a href="#strategy">查看组成与权重</a></span>
         </article>
         <article class="summary-card summary-card-updated">
           <span class="summary-label">快照生成时间</span>
@@ -131,6 +132,29 @@
             <p class="loading-message">载入候选详情…</p>
           </section>
         </div>
+      </section>
+
+      <section id="strategy" class="content-section strategy-section" aria-labelledby="strategy-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">SCORING POLICY</p>
+            <h2 id="strategy-title">策略组成与权重</h2>
+            <p class="section-description">综合得分由 9 类方向性因素加权构成；展开下方说明可查看具体因子和当前筛选条件。</p>
+          </div>
+          <span class="count-chip">权重合计 100%</span>
+        </div>
+        <div id="strategy-weight-grid" class="strategy-weight-grid" role="list" aria-label="各评分类型的权重">
+          <p class="loading-message">正在读取策略配置…</p>
+        </div>
+        <details class="strategy-details">
+          <summary>查看各类别计分因子与计算口径</summary>
+          <div id="strategy-factor-grid" class="strategy-factor-grid" role="list" aria-label="评分类型及其因子"></div>
+          <p class="strategy-footnote">列出的是各类别可用因子：每个因子先换算为候选池内的横截面分位，类别内对有数据的因子求平均，再按权重合成。某类别整组缺失时，该股票按剩余有效权重重新归一；低位因子只用于筛选，不额外加分。</p>
+        </details>
+        <details class="strategy-details">
+          <summary>查看本期筛选条件</summary>
+          <ul id="screening-rule-list" class="screening-rule-list"></ul>
+        </details>
       </section>
 
       <section id="validation" class="content-section validation-section" aria-labelledby="validation-title">

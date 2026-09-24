@@ -83,6 +83,52 @@ function renderCandidateOverview(rows) {
   container.append(summary, industries);
 }
 
+function renderStrategy(strategy, screeningRules) {
+  const weightGrid = byId("strategy-weight-grid");
+  const factorGrid = byId("strategy-factor-grid");
+  const screeningList = byId("screening-rule-list");
+  weightGrid.replaceChildren();
+  factorGrid.replaceChildren();
+  screeningList.replaceChildren();
+
+  for (const category of strategy || []) {
+    const categoryWeight = numericValue(category.weight);
+    const percentage = Number.isFinite(categoryWeight) ? categoryWeight * 100 : Number.NaN;
+    const digits = Number.isFinite(percentage) && Math.abs(percentage - Math.round(percentage)) < 0.05 ? 0 : 1;
+    const weightText = Number.isFinite(percentage) ? `${number(percentage, digits)}%` : "—";
+
+    const weightCard = makeNode("div", "strategy-weight-card");
+    weightCard.setAttribute("role", "listitem");
+    weightCard.setAttribute("aria-label", `${category.label || category.key} 权重 ${weightText}`);
+    weightCard.append(
+      makeNode("span", "strategy-weight-name", category.label || category.key || "未分类"),
+      makeNode("strong", "strategy-weight-value", weightText),
+    );
+    weightGrid.append(weightCard);
+
+    const factorCard = makeNode("article", "strategy-factor-card");
+    factorCard.setAttribute("role", "listitem");
+    const heading = makeNode("div", "strategy-factor-heading");
+    heading.append(
+      makeNode("strong", "", category.label || category.key || "未分类"),
+      makeNode("span", "", weightText),
+    );
+    const factors = Array.isArray(category.factors) ? category.factors.filter(Boolean) : [];
+    factorCard.append(
+      heading,
+      makeNode("p", "strategy-factor-list", factors.length ? factors.join("、") : "暂无因子说明"),
+    );
+    factorGrid.append(factorCard);
+  }
+
+  for (const rule of screeningRules || []) {
+    screeningList.append(makeNode("li", "", rule));
+  }
+  if (!screeningList.childElementCount) {
+    screeningList.append(makeNode("li", "", "本期筛选条件暂无说明。"));
+  }
+}
+
 function renderCandidate(item, rank, selected) {
   const button = makeNode("button", `candidate-row${selected ? " selected" : ""}`);
   button.type = "button";
@@ -443,6 +489,7 @@ function renderPage(data) {
   byId("spec-hash").textContent = data.spec_hash || "—";
   byId("updated-at").textContent = (data.published_at || "").replace("T", " ").slice(0, 16) || "—";
   renderNotes(data.notes || []);
+  renderStrategy(data.strategy || [], data.screening_rules || []);
   renderEvaluations(data.evaluation || []);
   renderCandidateOverview(data.recommendations || []);
   populateFilter(
