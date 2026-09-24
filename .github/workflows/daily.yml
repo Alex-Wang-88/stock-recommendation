@@ -12,7 +12,7 @@ on:
         type: string
 
 permissions:
-  actions: read
+  actions: write
   contents: read
 
 concurrency:
@@ -168,8 +168,28 @@ jobs:
           path: runtime-state
           key: ${{ env.STATE_CACHE_KEY }}
 
-      - name: Update the latest complete state artifact
+      - name: Delete older latest-state artifacts
+        id: prune-artifacts
         if: always() && hashFiles('runtime-state/data/archive.duckdb', 'runtime-state/data/market/daily.parquet') != ''
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const artifacts = await github.paginate(
+              github.rest.actions.listArtifactsForRepo,
+              { owner: context.repo.owner, repo: context.repo.repo, per_page: 100 }
+            );
+            const previous = artifacts.filter((artifact) => artifact.name === "stock-state-latest");
+            for (const artifact of previous) {
+              await github.rest.actions.deleteArtifact({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                artifact_id: artifact.id,
+              });
+              core.info(`Deleted prior artifact ${artifact.id}`);
+            }
+
+      - name: Update the latest complete state artifact
+        if: always() && steps.prune-artifacts.outcome == 'success' && hashFiles('runtime-state/data/archive.duckdb', 'runtime-state/data/market/daily.parquet') != ''
         uses: actions/upload-artifact@v7
         with:
           name: stock-state-latest
