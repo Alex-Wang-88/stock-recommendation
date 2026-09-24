@@ -13,10 +13,12 @@ from __future__ import annotations
 import os
 import sys
 import threading
+from html import escape
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 os.chdir(PROJECT_ROOT)
@@ -61,7 +63,7 @@ st.set_page_config(
     page_title="推荐股票工作台",
     page_icon="R",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
 )
 
 
@@ -88,7 +90,7 @@ def inject_style() -> None:
         [data-testid="stSidebar"] { background: #080c18; border-right: 1px solid var(--line); }
         [data-testid="stMetric"] {
             background: linear-gradient(135deg, rgba(14, 18, 35, .98), rgba(17, 24, 43, .92));
-            border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px;
+            border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px;
         }
         [data-testid="stMetricLabel"] { color: var(--muted); }
         [data-testid="stMetricValue"] { color: var(--text); font-family: 'Fira Code', monospace; }
@@ -112,6 +114,27 @@ def inject_style() -> None:
         .stock-heading { color: var(--text); font-size: 1.05rem; font-weight: 600; }
         .stock-symbol { color: var(--accent); font-family: 'Fira Code', monospace; }
         .mono { font-family: 'Fira Code', monospace; }
+        .top-summary-grid, .candidate-status-grid, .detail-stat-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 8px; margin: .55rem 0 .85rem;
+        }
+        .top-summary-item, .candidate-status-item, .detail-stat-item {
+            min-width: 0; background: linear-gradient(135deg, rgba(14, 18, 35, .98), rgba(17, 24, 43, .92));
+            border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px;
+        }
+        .top-summary-label, .candidate-status-label, .detail-stat-label {
+            color: var(--muted); display: block; font-size: .78rem; line-height: 1.25;
+        }
+        .top-summary-value, .candidate-status-value, .detail-stat-value {
+            color: var(--text); display: block; font: 600 1.12rem 'Fira Code', monospace;
+            margin-top: 4px; overflow-wrap: anywhere;
+        }
+        .top-summary-note { color: var(--muted); display: block; font-size: .72rem; margin-top: 3px; }
+        .candidate-industry-line { color: var(--muted); font-size: .82rem; line-height: 1.8; }
+        .candidate-industry-chip {
+            display: inline-block; background: rgba(96, 165, 250, .10); border: 1px solid #263c5e;
+            border-radius: 999px; color: #bfdbfe; margin: 0 .25rem .25rem 0; padding: 1px 9px;
+        }
         .operation-note {
             color: var(--muted); font-size: .88rem; line-height: 1.55;
             border-left: 2px solid var(--warning); padding: .25rem .8rem;
@@ -171,6 +194,12 @@ def build_local_screen(config: AppConfig, preset_name: str):
         table = context.build()
         spec = Spec.from_dict({**payload, "as_of": table.as_of})
         return run_screen(table, spec, config.rank.as_dict())
+
+
+@st.cache_data(show_spinner=False)
+def load_symbol_bars(path: str, symbol: str, end: str) -> pd.DataFrame:
+    with MarketStore(path) as store:
+        return store.symbol_bars(symbol, end=end, window=60)
 
 
 def format_number(value: object, digits: int = 2) -> str:
@@ -295,153 +324,280 @@ def recommendation_reason(row: pd.Series, weights: dict[str, float]) -> str:
     return "\n\n".join(lines)
 
 
-def render_stock_cards(result) -> None:
+def render_candlestick_chart(bars: pd.DataFrame, symbol: str, name: str) -> None:
+    if bars.empty:
+        st.info("本地行情归档里没有这只股票的日线数据。")
+        return
+
+    data = bars.copy()
+    for column in ("open", "high", "low", "close"):
+        data[column] = pd.to_numeric(data[column], errors="coerce")
+    data = data.dropna(subset=["open", "high", "low", "close"])
+    if data.empty:
+        st.info("这只股票的本地日线字段不完整，暂时无法绘图。")
+        return
+
+    width, height = 680, 286
+    margin_left, margin_right, margin_top, margin_bottom = 62, 16, 18, 36
+    plot_width = width - margin_left - margin_right
+    plot_height = height - margin_top - margin_bottom
+    low = float(data["low"].min())
+    high = float(data["high"].max())
+    spread = max(high - low, max(abs(high), 1.0) * 0.02)
+    low -= spread * 0.04
+    high += spread * 0.04
+
+    def y_pos(value: float) -> float:
+        return margin_top + (high - value) / (high - low) * plot_height
+
+    count = len(data)
+    step = plot_width / max(count, 1)
+    candle_width = min(7.0, max(2.4, step * 0.62))
+    svg: list[str] = [
+        f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="{escape(name)} '
+        f'{escape(symbol)} 最近日线K线和20日均线" xmlns="http://www.w3.org/2000/svg">',
+        '<rect width="100%" height="100%" rx="12" fill="#0e1223"/>',
+    ]
+    for tick in range(4):
+        value = high - (high - low) * tick / 3
+        y = y_pos(value)
+        svg.append(
+            f'<line x1="{margin_left}" y1="{y:.1f}" x2="{width-margin_right}" '
+            f'y2="{y:.1f}" stroke="#26344d" stroke-width="1"/>'
+        )
+        svg.append(
+            f'<text x="{margin_left-8}" y="{y+4:.1f}" text-anchor="end" '
+            'fill="#94a3b8" font-size="11">'
+            f'{value:.2f}</text>'
+        )
+
+    ma20 = data["close"].rolling(20, min_periods=1).mean()
+    ma_points: list[str] = []
+    for index, record in enumerate(data.itertuples(index=False)):
+        x = margin_left + (index + 0.5) * step
+        top, bottom = y_pos(float(record.high)), y_pos(float(record.low))
+        opening, closing = y_pos(float(record.open)), y_pos(float(record.close))
+        color = "#ef4444" if record.close >= record.open else "#22c55e"
+        body_y = min(opening, closing)
+        body_h = max(abs(closing - opening), 1.2)
+        svg.append(
+            f'<line x1="{x:.1f}" y1="{top:.1f}" x2="{x:.1f}" y2="{bottom:.1f}" '
+            f'stroke="{color}" stroke-width="1.2"/>'
+        )
+        svg.append(
+            f'<rect x="{x-candle_width/2:.1f}" y="{body_y:.1f}" '
+            f'width="{candle_width:.1f}" height="{body_h:.1f}" fill="{color}"/>'
+        )
+        ma_points.append(f"{x:.1f},{y_pos(float(ma20.iloc[index])):.1f}")
+    svg.append(
+        f'<polyline points="{" ".join(ma_points)}" fill="none" stroke="#60a5fa" '
+        'stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>'
+    )
+    first_day = pd.Timestamp(data.iloc[0]["trade_date"]).strftime("%Y-%m-%d")
+    last_day = pd.Timestamp(data.iloc[-1]["trade_date"]).strftime("%Y-%m-%d")
+    svg.extend(
+        [
+            f'<text x="{margin_left}" y="{height-10}" fill="#94a3b8" '
+            f'font-size="11">{first_day}</text>',
+            f'<text x="{width-margin_right}" y="{height-10}" text-anchor="end" '
+            f'fill="#94a3b8" font-size="11">{last_day}</text>',
+            '<text x="550" y="16" fill="#60a5fa" font-size="11">— MA20</text>',
+            "</svg>",
+        ]
+    )
+    components.html("".join(svg), height=height, scrolling=False)
+
+
+def render_stock_detail(row: pd.Series, result, config: AppConfig, rank: int) -> None:
+    symbol = safe_text(row.get("symbol"), "未知代码")
+    name = safe_text(row.get("name"), "未同步名称")
+    industry = safe_text(row.get("industry"), "未同步")
+    st.markdown(f"### {escape(name)} <span class='stock-symbol'>{escape(symbol)}</span>", unsafe_allow_html=True)
+    tags = safe_text(row.get("theme_tags"), "未归因")
+    st.caption(f"排名 {rank:02d} · 行业 {escape(industry)} · 题材归因 {escape(tags)}")
+
+    signal = safe_text(row.get("operation_signal"), "未生成")
+    reference = format_number(row.get("reference_price"))
+    buy_range = format_price_range(row.get("buy_low"), row.get("buy_high"))
+    invalidation = format_number(row.get("invalidation_price"))
+    targets = f"{format_number(row.get('target_1'))} / {format_number(row.get('target_2'))}"
+    detail_stats = [
+        ("收盘价", format_number(row.get("close"))),
+        ("综合分", format_number(row.get("score"), 3)),
+        ("权重覆盖", format_pct(row.get("score_coverage"), 0)),
+        ("20日收益", format_pct(row.get("ret_20"))),
+        ("操作信号", signal),
+        ("参考价", reference),
+        ("分批参考区间", buy_range),
+        ("逻辑失效价", invalidation),
+        ("目标一 / 二", targets),
+    ]
+    stats_html = ["<div class='detail-stat-grid'>"]
+    stats_html.extend(
+        "<div class='detail-stat-item'><span class='detail-stat-label'>"
+        f"{escape(label)}</span><strong class='detail-stat-value'>{escape(value)}</strong></div>"
+        for label, value in detail_stats
+    )
+    stats_html.append("</div>")
+    st.markdown("".join(stats_html), unsafe_allow_html=True)
+
+    weekday = safe_text(row.get("operation_weekday"), "未知日期")
+    expectation = safe_text(row.get("expectation_state"), "暂无明确代理")
+    reason = safe_text(row.get("operation_reason"), "暂无操作说明")
+    st.markdown(
+        "<div class='operation-note'>"
+        f"{escape(weekday)} · 短期兑现：{escape(expectation)}；回落参考 "
+        f"{format_number(row.get('pullback_price'))}；不追价上限 "
+        f"{format_number(row.get('no_chase_price'))}。{escape(reason)}</div>",
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("推荐理由与评分拆解", expanded=False):
+        st.markdown(recommendation_reason(row, result.weights))
+        st.dataframe(
+            contribution_table(row, result.weights),
+            hide_index=True,
+            width="stretch",
+            height=min(280, 42 + 36 * len(result.weights)),
+        )
+        detail_columns = (
+            "ret_since_924", "ret_20", "ret_60", "relative_ret_20", "relative_ret_60",
+            "volume_trend_20", "theme_heat_max", "theme_days_20", "lhb_net_buy_rel",
+            "main_net_inflow", "turnover_value_20", "close_position_250", "dist_to_52w_high",
+            "realized_vol_20", "downside_vol_20", "max_drawdown_60", "volatility_value",
+            "drawdown_value", "downside_volatility_value", "pe_ttm", "pe_industry_value",
+            "eps_ttm", "roe_avg", "gross_profit_margin", "net_profit_margin", "yoy_net_income",
+            "yoy_eps_basic", "revenue_yoy", "profit_growth_acceleration", "eps_growth_acceleration",
+            "positive_profit_streak", "positive_growth_streak", "current_ratio", "quick_ratio",
+            "cash_ratio", "liability_to_asset", "asset_to_equity", "ebit_to_interest", "cfo_to_or",
+            "cfo_to_np", "cfo_to_gr", "financial_safety_value", "industry_score", "industry_leader_score",
+        )
+        detail_rows = []
+        percent_columns = {
+            "ret_since_924", "ret_20", "ret_60", "dist_to_52w_high", "ma20_dev", "ma60_dev",
+            "lhb_net_buy_rel", "margin_rz_chg_20", "roe_avg", "gross_profit_margin", "net_profit_margin",
+            "yoy_net_income", "yoy_eps_basic", "revenue_yoy", "profit_growth_acceleration",
+            "eps_growth_acceleration", "relative_ret_20", "relative_ret_60", "liability_to_asset",
+            "cfo_to_or", "cfo_to_np", "cfo_to_gr", "downside_vol_20",
+        }
+        for column in detail_columns:
+            if column not in result.frame.columns:
+                continue
+            value = row.get(column)
+            if column in percent_columns:
+                formatted = format_pct(value)
+            elif column in {"turnover_value_20", "main_net_inflow"}:
+                formatted = format_money(value)
+            else:
+                formatted = format_number(value, 3)
+            detail_rows.append({"因子": FACTOR_LABELS.get(column, column), "数值": formatted})
+        st.dataframe(pd.DataFrame(detail_rows), hide_index=True, width="stretch", height=280)
+
+    with st.expander("查看本地 60 日 K 线", expanded=False):
+        if st.button("加载行情图", key=f"load-chart-{symbol}"):
+            st.session_state[f"chart-loaded-{symbol}"] = True
+        if st.session_state.get(f"chart-loaded-{symbol}"):
+            try:
+                bars = load_symbol_bars(config.market.daily_parquet, symbol, result.as_of)
+                render_candlestick_chart(bars, symbol, name)
+            except Exception as error:  # noqa: BLE001 - 图表故障不影响推荐清单
+                st.warning(f"本地图表暂不可用：{type(error).__name__}: {error}")
+
+
+def render_stock_cards(result, config: AppConfig) -> None:
     if result.frame.empty:
         st.warning("当前条件没有命中股票。请先查看‘数据健康’和筛选漏斗，确认归档是否完整。")
         return
 
-    for rank, (_, row) in enumerate(result.frame.iterrows(), start=1):
-        symbol = safe_text(row.get("symbol"), "未知代码")
-        name = safe_text(row.get("name"), "未同步名称")
-        score = format_number(row.get("score"), 3)
-        title = f"{rank:02d}   {symbol}  {name}   ·   综合分 {score}"
-        with st.expander(title, expanded=rank <= 3):
-            top = st.columns([1, 1, 1, 1.35, 2.1])
-            top[0].metric("收盘价", format_number(row.get("close")))
-            top[1].metric("权重覆盖", format_pct(row.get("score_coverage"), 0))
-            top[2].metric("20日收益", format_pct(row.get("ret_20")))
-            industry = safe_text(row.get("industry"), "未同步")
-            top[3].markdown(
-                f"**行业（本地快照）**\n\n<span class='stock-symbol'>{industry}</span>",
-                unsafe_allow_html=True,
-            )
-            tags = safe_text(row.get("theme_tags"), "未归因")
-            top[4].markdown(
-                f"**板块 / 题材（本地归因）**\n\n<span class='stock-symbol'>{tags}</span>",
-                unsafe_allow_html=True,
-            )
+    frame = result.frame.reset_index(drop=True).copy()
+    frame["_rank"] = range(1, len(frame) + 1)
+    frame["industry"] = frame.get("industry", pd.Series(index=frame.index, dtype="object")).fillna("未同步")
+    frame["operation_signal"] = frame.get(
+        "operation_signal", pd.Series(index=frame.index, dtype="object")
+    ).fillna("未生成")
 
-            st.markdown("**推荐理由**")
-            st.markdown(recommendation_reason(row, result.weights))
-            st.markdown("**今日操作建议**")
-            plan_cols = st.columns([1.15, 1.15, 1.45, 1.05, 1.2])
-            plan_cols[0].metric("动作", safe_text(row.get("operation_signal")))
-            plan_cols[1].metric("参考价", format_number(row.get("reference_price")))
-            plan_cols[2].metric(
-                "分批买入区间",
-                format_price_range(row.get("buy_low"), row.get("buy_high")),
-            )
-            plan_cols[3].metric("逻辑失效", format_number(row.get("invalidation_price")))
-            plan_cols[4].metric(
-                "目标一",
-                format_number(row.get("target_1")),
-                delta=f"目标二 {format_number(row.get('target_2'))}",
-                delta_color="off",
-            )
-            weekday = safe_text(row.get("operation_weekday"), "未知日期")
-            expectation = safe_text(row.get("expectation_state"), "暂无明确代理")
-            no_chase = format_number(row.get("no_chase_price"))
-            pullback = format_number(row.get("pullback_price"))
-            reason = safe_text(row.get("operation_reason"), "暂无操作说明")
-            st.markdown(
-                f"<div class='operation-note'>{weekday} · 短期兑现：{expectation}；"
-                f"回落参考 {pullback}；不追价上限 {no_chase}。{reason}</div>",
-                unsafe_allow_html=True,
-            )
-            st.markdown("**评分拆解**")
-            st.dataframe(
-                contribution_table(row, result.weights),
-                hide_index=True,
-                width="stretch",
-            )
-            with st.expander("查看因子明细", expanded=False):
-                detail = pd.DataFrame(
-                    [
-                        {
-                            "因子": FACTOR_LABELS.get(column, column),
-                            "数值": (
-                                format_pct(row.get(column))
-                                if column
-                                in {
-                                    "ret_since_924",
-                                    "ret_20",
-                                    "ret_60",
-                                    "dist_to_52w_high",
-                                    "ma20_dev",
-                                    "ma60_dev",
-                                    "lhb_net_buy_rel",
-                                    "margin_rz_chg_20",
-                                    "roe_avg",
-                                    "gross_profit_margin",
-                                    "net_profit_margin",
-                                    "yoy_net_income",
-                                    "yoy_eps_basic",
-                                    "revenue_yoy",
-                                    "profit_growth_acceleration",
-                                    "eps_growth_acceleration",
-                                    "relative_ret_20",
-                                    "relative_ret_60",
-                                    "liability_to_asset",
-                                    "cfo_to_or",
-                                    "cfo_to_np",
-                                    "cfo_to_gr",
-                                    "downside_vol_20",
-                                }
-                                else format_money(row.get(column))
-                                if column in {"turnover_value_20", "main_net_inflow"}
-                                else format_number(row.get(column), 3)
-                            ),
-                        }
-                        for column in (
-                            "ret_since_924",
-                            "ret_20",
-                            "ret_60",
-                            "relative_ret_20",
-                            "relative_ret_60",
-                            "volume_trend_20",
-                            "theme_heat_max",
-                            "theme_days_20",
-                            "lhb_net_buy_rel",
-                            "main_net_inflow",
-                            "turnover_value_20",
-                            "close_position_250",
-                            "dist_to_52w_high",
-                                    "realized_vol_20",
-                                    "downside_vol_20",
-                                    "max_drawdown_60",
-                                    "volatility_value",
-                                    "drawdown_value",
-                                    "downside_volatility_value",
-                            "pe_ttm",
-                            "pe_industry_value",
-                            "eps_ttm",
-                            "roe_avg",
-                            "gross_profit_margin",
-                            "net_profit_margin",
-                            "yoy_net_income",
-                            "yoy_eps_basic",
-                            "revenue_yoy",
-                            "profit_growth_acceleration",
-                            "eps_growth_acceleration",
-                            "positive_profit_streak",
-                            "positive_growth_streak",
-                            "current_ratio",
-                            "quick_ratio",
-                            "cash_ratio",
-                            "liability_to_asset",
-                            "asset_to_equity",
-                            "ebit_to_interest",
-                            "cfo_to_or",
-                            "cfo_to_np",
-                            "cfo_to_gr",
-                            "financial_safety_value",
-                            "industry_score",
-                            "industry_leader_score",
-                        )
-                        if column in result.frame.columns
-                    ]
-                )
-                st.dataframe(detail, hide_index=True, width="stretch")
+    st.markdown("#### 候选分布")
+    signal_order = ["今天可分批", "等回落再买", "暂缓，先确认"]
+    signal_counts = frame["operation_signal"].value_counts()
+    industry_counts = frame["industry"].replace("", "未同步").value_counts().head(4)
+    overview_html = ["<div class='candidate-status-grid'>"]
+    overview_html.extend(
+        "<div class='candidate-status-item'><span class='candidate-status-label'>"
+        f"{escape(signal)}</span><strong class='candidate-status-value'>"
+        f"{int(signal_counts.get(signal, 0))} 只</strong></div>"
+        for signal in signal_order
+    )
+    overview_html.append("</div><div class='candidate-industry-line'>候选行业 · ")
+    overview_html.extend(
+        f"<span class='candidate-industry-chip'>{escape(str(industry))} {int(count)} 只</span>"
+        for industry, count in industry_counts.items()
+    )
+    overview_html.append("<span>仅统计当前推荐清单</span></div>")
+    st.markdown("".join(overview_html), unsafe_allow_html=True)
+
+    all_industries = sorted(frame["industry"].replace("", "未同步").unique().tolist())
+    all_signals = sorted(frame["operation_signal"].unique().tolist())
+    search = st.text_input(
+        "搜索代码 / 名称", placeholder="输入代码或名称", key="candidate-search"
+    ).strip().lower()
+    with st.expander("更多筛选：行业与操作信号", expanded=False):
+        industry_filter = st.selectbox("行业", ["全部"] + all_industries, key="candidate-industry")
+        signal_filter = st.selectbox("操作信号", ["全部"] + all_signals, key="candidate-signal")
+    industry_filter = st.session_state.get("candidate-industry", "全部")
+    signal_filter = st.session_state.get("candidate-signal", "全部")
+
+    visible = frame.copy()
+    if industry_filter != "全部":
+        visible = visible.loc[visible["industry"] == industry_filter]
+    if signal_filter != "全部":
+        visible = visible.loc[visible["operation_signal"] == signal_filter]
+    if search:
+        search_text = visible["symbol"].astype(str) + " " + visible["name"].astype(str)
+        visible = visible.loc[search_text.str.lower().str.contains(search, regex=False, na=False)]
+    visible = visible.reset_index(drop=True)
+    if visible.empty:
+        st.info("没有符合当前筛选条件的候选股。")
+        return
+
+    left, right = st.columns([1.05, 1])
+    with left:
+        st.markdown(f"**候选清单**　{len(visible)} 只 · 点击行查看详情")
+        table = pd.DataFrame(
+            {
+                "候选": [
+                    f"{int(row['_rank']):02d} · {safe_text(row.get('symbol'))} "
+                    f"{safe_text(row.get('name'), '未同步名称')}"
+                    for _, row in visible.iterrows()
+                ],
+                "信号": visible["operation_signal"].tolist(),
+                "评分": pd.to_numeric(visible["score"], errors="coerce").tolist(),
+                "20日": (pd.to_numeric(visible["ret_20"], errors="coerce") * 100).tolist(),
+            }
+        )
+        key = f"candidate-table-{industry_filter}-{signal_filter}-{search}"
+        selection = st.dataframe(
+            table,
+            hide_index=True,
+            width="stretch",
+            height=458,
+            row_height=36,
+            on_select="rerun",
+            selection_mode="single-row",
+            selection_default={"selection": {"rows": [0], "columns": [], "cells": []}},
+            key=key,
+            column_config={
+                "候选": st.column_config.TextColumn("候选", width="medium"),
+                "信号": st.column_config.TextColumn("信号", width="small"),
+                "评分": st.column_config.NumberColumn("评分", format="%.3f", width="small"),
+                "20日": st.column_config.NumberColumn("20日", format="%.1f%%", width="small"),
+            },
+        )
+
+    selected = selection.selection.rows[0] if selection.selection.rows else 0
+    selected = min(selected, len(visible) - 1)
+    selected_row = visible.iloc[selected]
+    with right:
+        render_stock_detail(selected_row, result, config, int(selected_row["_rank"]))
 
 
 def render_sidebar(config: AppConfig) -> str:
@@ -714,15 +870,26 @@ def main() -> None:
             render_data_health(config)
             return
 
-    summary_cols = st.columns(4)
-    summary_cols[0].metric("数据截至", result.as_of)
-    summary_cols[1].metric("推荐数量", f"{result.kept:,}")
-    summary_cols[1].caption(
-        f"全市场 {result.universe_size:,} → 入选池 {result.pool_size:,} → 展示 {result.kept:,}"
-    )
     coverage = result.frame["score_coverage"].median() if "score_coverage" in result.frame else None
-    summary_cols[2].metric("中位权重覆盖", format_pct(coverage, 0))
-    summary_cols[3].metric("推荐预置", preset)
+    top_summary = [
+        ("数据截至", result.as_of, "最近完整交易日"),
+        (
+            "推荐数量",
+            f"{result.kept:,}",
+            f"全市场 {result.universe_size:,} → 入选池 {result.pool_size:,}",
+        ),
+        ("中位权重覆盖", format_pct(coverage, 0), "仅统计当前推荐清单"),
+        ("推荐预置", preset, "可在左侧切换策略"),
+    ]
+    summary_html = ["<div class='top-summary-grid'>"]
+    summary_html.extend(
+        "<div class='top-summary-item'><span class='top-summary-label'>"
+        f"{escape(label)}</span><strong class='top-summary-value'>{escape(value)}</strong>"
+        f"<small class='top-summary-note'>{escape(note)}</small></div>"
+        for label, value, note in top_summary
+    )
+    summary_html.append("</div>")
+    st.markdown("".join(summary_html), unsafe_allow_html=True)
 
     st.markdown(
         f"<div class='data-note'>数据时点：行情与因子截至 {result.as_of}；"
@@ -736,7 +903,7 @@ def main() -> None:
     )
     with recommendations_tab:
         st.markdown("<div class='section-label'>Recommended universe</div>", unsafe_allow_html=True)
-        render_stock_cards(result)
+        render_stock_cards(result, config)
     with method_tab:
         render_method(result)
     with validation_tab:

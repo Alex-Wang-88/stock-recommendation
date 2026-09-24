@@ -72,11 +72,13 @@
       </section>
 
       <section id="data-notes" class="data-notes" aria-labelledby="notes-title" hidden>
-        <div class="notes-heading">
-          <span class="notes-mark" aria-hidden="true">!</span>
-          <h2 id="notes-title">数据备注</h2>
-        </div>
-        <ul id="notes-list"></ul>
+        <details class="notes-disclosure">
+          <summary class="notes-heading">
+            <span class="notes-mark" aria-hidden="true">!</span>
+            <h2 id="notes-title">数据备注 <span id="notes-count" class="notes-count"></span></h2>
+          </summary>
+          <ul id="notes-list"></ul>
+        </details>
       </section>
 
       <section id="recommendations" class="content-section" aria-labelledby="recommendations-title">
@@ -84,10 +86,12 @@
           <div>
             <p class="eyebrow">SCREENED CANDIDATES</p>
             <h2 id="recommendations-title">候选清单</h2>
-            <p class="section-description">分数用于本策略内部排序；买入区间、回落价和目标价是历史数据推导的观察参考。</p>
+            <p class="section-description">在候选列表中切换股票，右侧查看日线 K 线、操作参考和筛选说明；分数仅用于本策略内部排序。</p>
           </div>
           <span id="visible-count" class="count-chip" aria-live="polite">载入中</span>
         </div>
+
+        <div id="candidate-overview" class="candidate-overview" aria-label="当前候选信号与行业分布"></div>
 
         <div class="filter-bar" role="search">
           <label class="search-field">
@@ -95,13 +99,12 @@
             <input id="search-input" type="search" placeholder="输入代码、名称或行业" autocomplete="off" />
           </label>
           <label class="select-field">
-            <span>操作参考</span>
-            <select id="signal-filter">
-              <option value="">全部状态</option>
-              <option value="今天可分批">今天可分批</option>
-              <option value="等回落再买">等回落再买</option>
-              <option value="暂缓，先确认">暂缓，先确认</option>
-            </select>
+            <span>操作信号</span>
+            <select id="signal-filter"><option value="">全部信号</option></select>
+          </label>
+          <label class="select-field">
+            <span>行业</span>
+            <select id="industry-filter"><option value="">全部行业</option></select>
           </label>
           <label class="select-field sort-field">
             <span>排序方式</span>
@@ -114,8 +117,19 @@
         </div>
 
         <p id="load-error" class="load-error" role="alert" hidden></p>
-        <div id="recommendation-list" class="recommendation-grid" aria-live="polite" aria-busy="true">
-          <p class="loading-message">正在读取最新推荐快照…</p>
+        <div class="results-layout">
+          <div class="candidate-panel">
+            <h3 class="panel-heading">候选列表 <span>点击一行查看详情</span></h3>
+            <div class="candidate-list-head" aria-hidden="true">
+              <span>候选</span><span>信号</span><span>评分</span><span>20日</span>
+            </div>
+            <div id="recommendation-list" class="candidate-list" role="list" aria-label="股票候选列表" aria-live="polite" aria-busy="true">
+              <p class="loading-message">正在读取最新推荐快照…</p>
+            </div>
+          </div>
+          <section id="selected-detail" class="selected-detail" aria-label="所选股票详情" aria-live="polite">
+            <p class="loading-message">载入候选详情…</p>
+          </section>
         </div>
       </section>
 

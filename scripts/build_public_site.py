@@ -1,14 +1,16 @@
 """Build a small, public, read-only recommendation site from the latest report.
 
-The generated site contains only the displayed recommendation snapshot and
-forward-validation summary. It never copies DuckDB, daily bars, source records,
-announcement queues, or the full runtime-state directory to GitHub Pages.
+The generated site contains the displayed recommendation snapshot, recent
+OHLC rows for those candidates, and the forward-validation summary. It never
+copies DuckDB, the full market history, source records, announcement queues,
+or the full runtime-state directory to GitHub Pages.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import duckdb
 import json
 import re
 import shutil
@@ -105,6 +107,76 @@ def _public_recommendations(report_path: Path) -> list[dict[str, object]]:
     return items
 
 
+def _public_kline_bars(
+    market_path: Path,
+    recommendations: list[dict[str, object]],
+    as_of: str | None,
+    window: int = 60,
+) -> dict[str, list[list[object]]]:
+    """Read a small, recent OHLC window for only the displayed candidates."""
+    if not as_of or not market_path.is_file() or not recommendations:
+        return {}
+
+    symbols = sorted(
+        {
+            str(item.get("symbol"))
+            for item in recommendations
+            if re.fullmatch(r"\d{6}", str(item.get("symbol") or ""))
+        }
+    )
+    if not symbols:
+        return {}
+
+    path_literal = market_path.resolve().as_posix().replace("'", "''")
+    symbol_placeholders = ", ".join("?" for _ in symbols)
+    query = f"""
+        with candidate_bars as (
+            select
+                lpad(cast(symbol as varchar), 6, '0') as symbol,
+                cast(trade_date as date) as trade_date,
+                cast(open as double) as open,
+                cast(high as double) as high,
+                cast(low as double) as low,
+                cast(close as double) as close,
+                cast(volume as bigint) as volume
+            from read_parquet('{path_literal}')
+            where lpad(cast(symbol as varchar), 6, '0') in ({symbol_placeholders})
+                and cast(trade_date as date) <= cast(? as date)
+        )
+        select
+            symbol,
+            strftime(trade_date, '%Y-%m-%d') as trade_date,
+            open,
+            high,
+            low,
+            close,
+            volume
+        from candidate_bars
+        qualify row_number() over (partition by symbol order by trade_date desc) <= ?
+        order by symbol, trade_date
+    """
+
+    connection = duckdb.connect()
+    try:
+        rows = connection.execute(query, [*symbols, as_of, max(1, min(int(window), 250))]).fetchall()
+    finally:
+        connection.close()
+
+    history: dict[str, list[list[object]]] = {symbol: [] for symbol in symbols}
+    for symbol, trade_date, open_, high, low, close, volume in rows:
+        history[symbol].append(
+            [
+                str(trade_date),
+                _number(open_),
+                _number(high),
+                _number(low),
+                _number(close),
+                _number(volume),
+            ]
+        )
+    return history
+
+
 def _evaluation(reports_dir: Path, spec_hash: str) -> list[dict[str, object]]:
     summary_path = reports_dir / "forward" / "evaluation_summary.csv"
     if not summary_path.is_file():
@@ -149,13 +221,21 @@ def build_site(data_dir: Path, source_dir: Path, output_dir: Path) -> dict[str, 
         recommendations = _public_recommendations(report_path)
         evaluation = _evaluation(reports_dir, spec_hash)
         notes, qualified_count = _report_notes(report_path)
+        bars_by_symbol = _public_kline_bars(
+            data_dir / "market" / "daily.parquet", recommendations, as_of
+        )
+        for item in recommendations:
+            item["bars"] = bars_by_symbol.get(str(item.get("symbol") or ""), [])
+        if recommendations and not any(item["bars"] for item in recommendations):
+            notes.append("候选个股的近期日线数据暂缺，K 线图表当前无法显示。")
     else:
         report_path, as_of, spec_hash = None, None, ""
         recommendations, evaluation = [], []
         notes, qualified_count = _report_notes(None)
+        bars_by_symbol = {}
 
     payload: dict[str, object] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "title": "每日股票候选",
         "as_of": as_of,
         "spec_hash": spec_hash or None,
@@ -188,6 +268,7 @@ def main() -> int:
         "Public site generated: "
         f"as_of={payload['as_of'] or 'none'}, "
         f"recommendations={len(payload['recommendations'])}, "
+        f"kline_symbols={sum(bool(item.get('bars')) for item in payload['recommendations'])}, "
         f"evaluation_rows={len(payload['evaluation'])}"
     )
     return 0

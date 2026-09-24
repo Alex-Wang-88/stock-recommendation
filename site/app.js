@@ -31,66 +31,270 @@ function makeNode(tag, className = "", textValue = "") {
   return element;
 }
 
-function addPriceCell(parent, label, value) {
-  const cell = makeNode("div", "price-cell");
-  cell.append(makeNode("span", "", label), makeNode("strong", "", value));
-  parent.append(cell);
-}
-
 function signalClass(signal) {
   if (signal === "今天可分批") return "buy";
   if (signal === "等回落再买") return "wait";
   return "pause";
 }
 
-function renderStock(item, index) {
-  const card = makeNode("article", "stock-card");
-  const head = makeNode("div", "stock-card-head");
-  const identity = makeNode("div", "identity");
-  identity.append(makeNode("span", "rank-number", String(index + 1).padStart(2, "0")));
-  const nameWrap = makeNode("div", "stock-name-wrap");
-  nameWrap.append(makeNode("h3", "stock-name", item.name || "未命名"));
-  const meta = makeNode("div", "stock-meta");
-  meta.append(makeNode("span", "stock-code", item.symbol || ""));
-  if (item.industry) meta.append(makeNode("span", "", item.industry));
-  nameWrap.append(meta);
-  identity.append(nameWrap);
-  const scoreBox = makeNode("div", "score-box");
-  scoreBox.append(makeNode("span", "score-label", "综合分"), makeNode("strong", "score-value", number(item.score, 3)));
-  head.append(identity, scoreBox);
+let selectedSymbol = null;
 
-  const signalRow = makeNode("div", "signal-row");
-  signalRow.append(makeNode("span", `signal-pill ${signalClass(item.operation_signal)}`, item.operation_signal || "未标注"));
-  if (item.expectation_state) signalRow.append(makeNode("span", "expectation", item.expectation_state));
+function renderCandidateOverview(rows) {
+  const container = byId("candidate-overview");
+  container.replaceChildren();
 
-  const prices = makeNode("div", "price-grid");
-  addPriceCell(prices, "参考收盘价", price(item.close));
-  addPriceCell(prices, "分批买入区间", item.buy_low != null || item.buy_high != null ? `${price(item.buy_low)} – ${price(item.buy_high)}` : "—");
+  const signalCounts = new Map();
+  const industryCounts = new Map();
+  for (const row of rows) {
+    const signal = row.operation_signal || "未标注";
+    signalCounts.set(signal, (signalCounts.get(signal) || 0) + 1);
+    const industry = row.industry || "未同步";
+    industryCounts.set(industry, (industryCounts.get(industry) || 0) + 1);
+  }
+
+  const summary = makeNode("div", "candidate-status-grid");
+  const commonSignals = ["今天可分批", "等回落再买", "暂缓，先确认"];
+  const otherSignals = [...signalCounts.keys()].filter((signal) => !commonSignals.includes(signal));
+  for (const signal of [...commonSignals, ...otherSignals]) {
+    const card = makeNode("div", `candidate-status-item ${signalClass(signal)}`);
+    card.append(
+      makeNode("span", "candidate-status-label", signal),
+      makeNode("strong", "candidate-status-value", `${signalCounts.get(signal) || 0} 只`),
+    );
+    summary.append(card);
+  }
+
+  const industries = makeNode("div", "candidate-industry-line");
+  industries.append(makeNode("span", "industry-caption", "候选行业 · "));
+  const topIndustries = [...industryCounts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], "zh-CN"))
+    .slice(0, 4);
+  for (const [industry, count] of topIndustries) {
+    const chip = makeNode("span", "candidate-industry-chip");
+    chip.append(makeNode("span", "", industry), makeNode("strong", "", `${count} 只`));
+    industries.append(chip);
+  }
+  industries.append(makeNode("span", "candidate-scope-note", "仅统计当前候选清单"));
+  container.append(summary, industries);
+}
+
+function renderCandidate(item, rank, selected) {
+  const button = makeNode("button", `candidate-row${selected ? " selected" : ""}`);
+  button.type = "button";
+  if (selected) button.setAttribute("aria-current", "true");
+  button.setAttribute("aria-label", `${item.name || "未命名"} ${item.symbol || ""}，${item.operation_signal || "未标注"}`);
+
+  const identity = makeNode("span", "candidate-identity");
+  identity.append(
+    makeNode("span", "candidate-rank", String(rank).padStart(2, "0")),
+    makeNode("span", "candidate-name", item.name || "未命名"),
+    makeNode("span", "candidate-symbol", item.symbol || ""),
+  );
+  const signal = makeNode("span", `candidate-signal ${signalClass(item.operation_signal)}`, item.operation_signal || "未标注");
+  const score = makeNode("span", "candidate-score", number(item.score, 3));
+  const ret = makeNode("span", `candidate-return${numericValue(item.ret_20) < 0 ? " negative" : ""}`, percent(item.ret_20));
+  button.append(identity, signal, score, ret);
+  button.addEventListener("click", () => {
+    selectedSymbol = item.symbol;
+    const data = window.recommendationSnapshot;
+    if (data) updateRecommendations(data);
+  });
+  const row = makeNode("div", "candidate-row-wrap");
+  row.setAttribute("role", "listitem");
+  row.append(button);
+  return row;
+}
+
+function addDetailStat(parent, label, value) {
+  const cell = makeNode("div", "detail-stat");
+  cell.append(makeNode("span", "detail-stat-label", label), makeNode("strong", "detail-stat-value", value));
+  parent.append(cell);
+}
+
+function addPriceCell(parent, label, value) {
+  const cell = makeNode("div", "detail-price-cell");
+  cell.append(makeNode("span", "detail-price-label", label), makeNode("strong", "detail-price-value", value));
+  parent.append(cell);
+}
+
+function svgNode(tag, attributes = {}, textValue = "") {
+  const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, String(value));
+  if (textValue) element.textContent = textValue;
+  return element;
+}
+
+function renderCandlestickChart(item) {
+  const section = makeNode("section", "detail-chart-section");
+  const sourceBars = Array.isArray(item.bars) ? item.bars : [];
+  const bars = sourceBars.map((row) => {
+    if (!Array.isArray(row) || row.length < 5) return null;
+    const [date, open, high, low, close, volume] = row;
+    const values = [open, high, low, close].map((value) => value == null ? Number.NaN : Number(value));
+    if (!values.every(Number.isFinite)) return null;
+    return { date: String(date || ""), open: values[0], high: values[1], low: values[2], close: values[3], volume };
+  }).filter(Boolean);
+
+  const heading = makeNode("div", "detail-chart-heading");
+  heading.append(makeNode("strong", "detail-chart-title", "日线走势"));
+  const latestDate = bars.length ? bars[bars.length - 1].date : "";
+  heading.append(makeNode("span", "detail-chart-range", bars.length ? `近 ${bars.length} 个交易日 · 截至 ${latestDate}` : "日线数据暂不可用"));
+
+  section.append(heading);
+  if (!bars.length) {
+    section.append(makeNode("p", "detail-chart-empty", "该股票暂无可绘制的近期日线数据。"));
+    return section;
+  }
+
+  const width = 680;
+  const height = 236;
+  const margin = { left: 60, right: 14, top: 18, bottom: 27 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  let minPrice = Math.min(...bars.map((bar) => bar.low));
+  let maxPrice = Math.max(...bars.map((bar) => bar.high));
+  const spread = Math.max(maxPrice - minPrice, Math.abs(maxPrice) * 0.02, 0.02);
+  minPrice -= spread * 0.04;
+  maxPrice += spread * 0.04;
+  const yPosition = (value) => margin.top + ((maxPrice - value) / (maxPrice - minPrice)) * plotHeight;
+  const step = plotWidth / bars.length;
+  const candleWidth = Math.min(7, Math.max(2.4, step * 0.62));
+
+  const svg = svgNode("svg", {
+    class: "detail-candlestick-chart",
+    viewBox: `0 0 ${width} ${height}`,
+    role: "img",
+    "aria-label": `${item.name || "股票"} ${item.symbol || ""} 最近 ${bars.length} 个交易日日线 K 线和 MA20 均线`,
+    preserveAspectRatio: "none",
+  });
+  svg.append(svgNode("title", {}, `${item.name || "股票"} ${item.symbol || ""} 日线 K 线`));
+  svg.append(svgNode("rect", { class: "chart-background", x: 0, y: 0, width, height, rx: 8 }));
+
+  for (let tick = 0; tick < 4; tick += 1) {
+    const value = maxPrice - ((maxPrice - minPrice) * tick) / 3;
+    const y = yPosition(value);
+    svg.append(svgNode("line", {
+      class: "chart-grid-line",
+      x1: margin.left,
+      y1: y.toFixed(2),
+      x2: width - margin.right,
+      y2: y.toFixed(2),
+    }));
+    svg.append(svgNode("text", {
+      class: "chart-axis-label",
+      x: margin.left - 7,
+      y: (y + 4).toFixed(2),
+      "text-anchor": "end",
+    }, value.toFixed(2)));
+  }
+
+  const movingAveragePoints = [];
+  let movingAverageTotal = 0;
+  bars.forEach((bar, index) => {
+    const x = margin.left + (index + 0.5) * step;
+    const openY = yPosition(bar.open);
+    const closeY = yPosition(bar.close);
+    const group = svgNode("g", { class: bar.close >= bar.open ? "candle-up" : "candle-down" });
+    const volumeText = bar.volume == null ? "" : ` · 成交量 ${number(bar.volume, 0)}`;
+    group.append(svgNode("title", {}, `${bar.date} 开 ${price(bar.open)} 高 ${price(bar.high)} 低 ${price(bar.low)} 收 ${price(bar.close)}${volumeText}`));
+    group.append(svgNode("line", {
+      class: "candle-wick",
+      x1: x.toFixed(2),
+      y1: yPosition(bar.high).toFixed(2),
+      x2: x.toFixed(2),
+      y2: yPosition(bar.low).toFixed(2),
+    }));
+    group.append(svgNode("rect", {
+      class: "candle-body",
+      x: (x - candleWidth / 2).toFixed(2),
+      y: Math.min(openY, closeY).toFixed(2),
+      width: candleWidth.toFixed(2),
+      height: Math.max(Math.abs(closeY - openY), 1.2).toFixed(2),
+    }));
+    svg.append(group);
+
+    movingAverageTotal += bar.close;
+    if (index >= 20) movingAverageTotal -= bars[index - 20].close;
+    const period = Math.min(index + 1, 20);
+    movingAveragePoints.push(`${x.toFixed(2)},${yPosition(movingAverageTotal / period).toFixed(2)}`);
+  });
+  svg.append(svgNode("polyline", { class: "chart-ma20-line", points: movingAveragePoints.join(" ") }));
+  svg.append(svgNode("text", {
+    class: "chart-axis-label",
+    x: margin.left,
+    y: height - 8,
+    "text-anchor": "start",
+  }, bars[0].date));
+  svg.append(svgNode("text", {
+    class: "chart-axis-label",
+    x: width - margin.right,
+    y: height - 8,
+    "text-anchor": "end",
+  }, bars[bars.length - 1].date));
+
+  const chartLegend = makeNode("div", "detail-chart-legend");
+  for (const [label, swatchClass] of [["阳线", "chart-legend-up"], ["阴线", "chart-legend-down"], ["MA20", "chart-legend-ma"]]) {
+    const legendItem = makeNode("span", "chart-legend-item");
+    legendItem.append(makeNode("i", swatchClass), makeNode("span", "", label));
+    chartLegend.append(legendItem);
+  }
+  section.append(chartLegend, svg);
+  return section;
+}
+
+function renderStockDetail(item, rank) {
+  const panel = byId("selected-detail");
+  panel.replaceChildren();
+  panel.setAttribute("aria-label", `${item.name || "未命名"} ${item.symbol || ""} 详情`);
+
+  const header = makeNode("div", "detail-header");
+  const titleGroup = makeNode("div", "detail-title-group");
+  titleGroup.append(
+    makeNode("span", "detail-rank", `策略排名 ${String(rank).padStart(2, "0")}`),
+    makeNode("h3", "detail-title", item.name || "未命名"),
+  );
+  const symbol = makeNode("span", "detail-symbol", item.symbol || "");
+  header.append(titleGroup, symbol);
+  const meta = makeNode("p", "detail-meta", [item.industry || "行业未同步", item.expectation_state || ""].filter(Boolean).join(" · "));
+
+  const stats = makeNode("div", "detail-stats");
+  addDetailStat(stats, "收盘价", price(item.close));
+  addDetailStat(stats, "综合分", number(item.score, 3));
+  addDetailStat(stats, "权重覆盖", item.score_coverage == null ? "—" : percent(item.score_coverage, 0));
+  addDetailStat(stats, "近 20 日", percent(item.ret_20));
+
+  const signal = makeNode("p", `detail-signal ${signalClass(item.operation_signal)}`);
+  signal.append(makeNode("span", "", "操作信号"), makeNode("strong", "", item.operation_signal || "未标注"));
+
+  const prices = makeNode("div", "detail-price-grid");
+  const buyRange = item.buy_low != null || item.buy_high != null
+    ? `${price(item.buy_low)} – ${price(item.buy_high)}`
+    : "—";
+  addPriceCell(prices, "参考价", price(item.close));
+  addPriceCell(prices, "分批买入区间", buyRange);
   addPriceCell(prices, "回落触发参考", price(item.pullback_price));
   addPriceCell(prices, "不追价参考", price(item.no_chase_price));
   addPriceCell(prices, "逻辑失效参考", price(item.invalidation_price));
   addPriceCell(prices, "目标一 / 目标二", `${price(item.target_1)} / ${price(item.target_2)}`);
 
-  const insights = makeNode("div", "stock-insights");
-  const pe = numericValue(item.pe_ttm);
-  const peText = Number.isFinite(pe) && pe > 0 ? number(pe, 1) : "—";
-  insights.append(makeNode("span", "", "近 20 日 "));
-  insights.lastChild.append(makeNode("strong", "", percent(item.ret_20)));
-  insights.append(makeNode("span", "", "相对大盘 "));
-  insights.lastChild.append(makeNode("strong", "", percent(item.relative_ret_20)));
-  insights.append(makeNode("span", "", "PE(TTM) "));
-  insights.lastChild.append(makeNode("strong", "", peText));
+  panel.append(header, meta, stats, signal, prices, renderCandlestickChart(item));
+  if (item.announcement_alert) {
+    panel.append(makeNode("p", "announcement-note", `公告提醒：${item.announcement_alert}`));
+  }
 
-  card.append(head, signalRow, prices, insights);
-  if (item.announcement_alert) card.append(makeNode("p", "announcement-note", `公告提醒：${item.announcement_alert}`));
   if (item.operation_reason || item.reason) {
     const details = makeNode("details", "details-toggle");
-    details.append(makeNode("summary", "", "查看筛选与操作说明"));
+    details.append(makeNode("summary", "", "筛选与操作说明"));
     if (item.operation_reason) details.append(makeNode("p", "", item.operation_reason));
     if (item.reason) details.append(makeNode("p", "", item.reason));
-    card.append(details);
+    panel.append(details);
   }
-  return card;
+
+  const insight = makeNode("p", "detail-insight");
+  const pe = numericValue(item.pe_ttm);
+  const peText = Number.isFinite(pe) && pe > 0 ? number(pe, 1) : "—";
+  insight.textContent = `相对大盘 ${percent(item.relative_ret_20)} · PE(TTM) ${peText}`;
+  panel.append(insight);
 }
 
 function renderEvaluations(rows) {
@@ -119,14 +323,25 @@ function renderEvaluations(rows) {
 function updateRecommendations(data) {
   const query = byId("search-input").value.trim().toLocaleLowerCase("zh-CN");
   const selectedSignal = byId("signal-filter").value;
+  const selectedIndustry = byId("industry-filter").value;
   const sortBy = byId("sort-select").value;
   let rows = [...(data.recommendations || [])].filter((item) => {
     const searchText = [item.symbol, item.name, item.industry, item.announcement_alert].join(" ").toLocaleLowerCase("zh-CN");
-    return (!query || searchText.includes(query)) && (!selectedSignal || item.operation_signal === selectedSignal);
+    return (!query || searchText.includes(query))
+      && (!selectedSignal || (item.operation_signal || "未标注") === selectedSignal)
+      && (!selectedIndustry || (item.industry || "未同步") === selectedIndustry);
   });
 
-  if (sortBy === "score") rows.sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0));
-  if (sortBy === "ret20") rows.sort((a, b) => (Number(b.ret_20) || -Infinity) - (Number(a.ret_20) || -Infinity));
+  if (sortBy === "score") rows.sort((a, b) => {
+    const left = numericValue(b.score);
+    const right = numericValue(a.score);
+    return (Number.isFinite(left) ? left : -Infinity) - (Number.isFinite(right) ? right : -Infinity);
+  });
+  if (sortBy === "ret20") rows.sort((a, b) => {
+    const left = numericValue(b.ret_20);
+    const right = numericValue(a.ret_20);
+    return (Number.isFinite(left) ? left : -Infinity) - (Number.isFinite(right) ? right : -Infinity);
+  });
 
   const list = byId("recommendation-list");
   list.replaceChildren();
@@ -134,24 +349,51 @@ function updateRecommendations(data) {
   byId("visible-count").textContent = `显示 ${rows.length} / ${data.recommendations.length} 只`;
   if (!rows.length) {
     list.append(makeNode("p", "empty-message", "没有符合当前搜索条件的候选。"));
+    byId("selected-detail").replaceChildren(makeNode("p", "empty-message", "当前筛选下没有候选详情。"));
+    selectedSymbol = null;
     return;
   }
-  rows.forEach((item, index) => list.append(renderStock(item, index)));
+
+  if (!rows.some((item) => item.symbol === selectedSymbol)) selectedSymbol = rows[0].symbol;
+  rows.forEach((item) => {
+    const rank = data.recommendations.findIndex((candidate) => candidate.symbol === item.symbol) + 1;
+    list.append(renderCandidate(item, rank, item.symbol === selectedSymbol));
+  });
+  const selected = rows.find((item) => item.symbol === selectedSymbol);
+  renderStockDetail(selected, data.recommendations.findIndex((item) => item.symbol === selectedSymbol) + 1);
+}
+
+function populateFilter(id, placeholder, values) {
+  const select = byId(id);
+  const previous = select.value;
+  select.replaceChildren();
+  const allOption = makeNode("option", "", placeholder);
+  allOption.value = "";
+  select.append(allOption);
+  for (const value of values) {
+    const option = makeNode("option", "", value);
+    option.value = value;
+    select.append(option);
+  }
+  if (values.includes(previous)) select.value = previous;
 }
 
 function renderNotes(notes) {
   const section = byId("data-notes");
   const list = byId("notes-list");
+  const count = byId("notes-count");
   list.replaceChildren();
   if (!notes || !notes.length) {
     section.hidden = true;
     return;
   }
   notes.forEach((note) => list.append(makeNode("li", "", note)));
+  count.textContent = `${notes.length} 项，点击展开`;
   section.hidden = false;
 }
 
 function renderPage(data) {
+  window.recommendationSnapshot = data;
   byId("as-of-value").textContent = data.as_of || "暂无快照";
   byId("candidate-count").textContent = number(data.recommendations?.length ?? 0, 0);
   byId("pool-count").textContent = data.qualified_count != null
@@ -161,8 +403,19 @@ function renderPage(data) {
   byId("updated-at").textContent = (data.published_at || "").replace("T", " ").slice(0, 16) || "—";
   renderNotes(data.notes || []);
   renderEvaluations(data.evaluation || []);
+  renderCandidateOverview(data.recommendations || []);
+  populateFilter(
+    "signal-filter",
+    "全部信号",
+    [...new Set((data.recommendations || []).map((item) => item.operation_signal || "未标注"))].sort((a, b) => a.localeCompare(b, "zh-CN")),
+  );
+  populateFilter(
+    "industry-filter",
+    "全部行业",
+    [...new Set((data.recommendations || []).map((item) => item.industry || "未同步"))].sort((a, b) => a.localeCompare(b, "zh-CN")),
+  );
   updateRecommendations(data);
-  for (const id of ["search-input", "signal-filter", "sort-select"]) {
+  for (const id of ["search-input", "signal-filter", "industry-filter", "sort-select"]) {
     byId(id).addEventListener("input", () => updateRecommendations(data));
     byId(id).addEventListener("change", () => updateRecommendations(data));
   }

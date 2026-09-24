@@ -241,6 +241,28 @@ class MarketStore:
         frame["symbol"] = frame["symbol"].astype(str).str.zfill(6)
         return frame
 
+    def symbol_bars(
+        self, symbol: str, end: str | None = None, window: int = 60
+    ) -> pd.DataFrame:
+        """按需读取单只股票最近若干根日线，供详情图表使用。"""
+
+        self._require()
+        code = str(symbol).strip()
+        if not re.fullmatch(r"\d{6}", code):
+            raise ValueError(f"股票代码必须是 6 位数字，收到：{symbol!r}")
+        limit = max(1, min(int(window), 500))
+        end_clause = f"and trade_date <= date '{_iso(end)}'" if end else ""
+        frame = self.conn.execute(
+            f"select {', '.join(BAR_COLUMNS)} from '{self.path.as_posix()}' "
+            f"where lpad(cast(symbol as varchar), 6, '0') = '{code}' {end_clause} "
+            f"order by trade_date desc limit {limit}"
+        ).df()
+        if frame.empty:
+            return pd.DataFrame(columns=list(BAR_COLUMNS))
+        frame["trade_date"] = pd.to_datetime(frame["trade_date"]).dt.normalize()
+        frame["symbol"] = frame["symbol"].astype(str).str.zfill(6)
+        return frame.sort_values("trade_date").reset_index(drop=True)
+
     def closes_on(self, dates: dict[str, str]) -> pd.DataFrame:
         """取若干基准日的收盘价，**取不晚于该日的最后一个交易日**。
 
