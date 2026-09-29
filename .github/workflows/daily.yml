@@ -5,8 +5,9 @@ on:
     branches:
       - main
   schedule:
-    # 18:00 China Standard Time (UTC+8), Monday through Friday.
-    - cron: "0 10 * * 1-5"
+    # 17:17 Beijing time, Monday through Friday; avoid scheduling at the top of the hour.
+    - cron: "17 17 * * 1-5"
+      timezone: "Asia/Shanghai"
   workflow_dispatch:
     inputs:
       restore_snapshot_key:
