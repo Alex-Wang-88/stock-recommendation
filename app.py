@@ -59,6 +59,9 @@ CATEGORY_LABELS = {
     "liquidity": "流动性",
 }
 
+A_SHARE_UP_COLOR = "#ef4444"
+A_SHARE_DOWN_COLOR = "#22c55e"
+
 st.set_page_config(
     page_title="推荐股票工作台",
     page_icon="R",
@@ -82,6 +85,8 @@ def inject_style() -> None:
             --accent: #22c55e;
             --warning: #f59e0b;
             --danger: #ef4444;
+            --price-up: #ef4444;
+            --price-down: #22c55e;
         }
         html, body, [class*="css"] { font-family: 'Fira Sans', sans-serif; }
         [data-testid="stAppViewContainer"] { background: var(--bg); }
@@ -129,6 +134,8 @@ def inject_style() -> None:
             color: var(--text); display: block; font: 600 1.12rem 'Fira Code', monospace;
             margin-top: 4px; overflow-wrap: anywhere;
         }
+        .detail-stat-value.positive { color: var(--price-up); }
+        .detail-stat-value.negative { color: var(--price-down); }
         .top-summary-note { color: var(--muted); display: block; font-size: .72rem; margin-top: 3px; }
         .candidate-industry-line { color: var(--muted); font-size: .82rem; line-height: 1.8; }
         .candidate-industry-chip {
@@ -212,6 +219,25 @@ def format_pct(value: object, digits: int = 1) -> str:
     if value is None or pd.isna(value):
         return "—"
     return f"{float(value) * 100:.{digits}f}%"
+
+
+def a_share_return_class(value: object) -> str:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if pd.isna(parsed) or parsed == 0:
+        return ""
+    return "positive" if parsed > 0 else "negative"
+
+
+def a_share_return_style(value: object) -> str:
+    tone = a_share_return_class(value)
+    if tone == "positive":
+        return f"color: {A_SHARE_UP_COLOR}; font-weight: 600;"
+    if tone == "negative":
+        return f"color: {A_SHARE_DOWN_COLOR}; font-weight: 600;"
+    return ""
 
 
 def format_score_100(value: object) -> str:
@@ -398,7 +424,7 @@ def render_candlestick_chart(bars: pd.DataFrame, symbol: str, name: str) -> None
         x = margin_left + (index + 0.5) * step
         top, bottom = y_pos(float(record.high)), y_pos(float(record.low))
         opening, closing = y_pos(float(record.open)), y_pos(float(record.close))
-        color = "#ef4444" if record.close >= record.open else "#22c55e"
+        color = A_SHARE_UP_COLOR if record.close >= record.open else A_SHARE_DOWN_COLOR
         body_y = min(opening, closing)
         body_h = max(abs(closing - opening), 1.2)
         svg.append(
@@ -460,21 +486,21 @@ def render_stock_detail(row: pd.Series, result, config: AppConfig, rank: int) ->
     invalidation = format_number(row.get("invalidation_price"))
     targets = f"{format_number(row.get('target_1'))} / {format_number(row.get('target_2'))}"
     detail_stats = [
-        ("收盘价", format_number(row.get("close"))),
-        ("综合得分", format_score_100(row.get("score"))),
-        ("权重覆盖", format_pct(row.get("score_coverage"), 0)),
-        ("20日收益", format_pct(row.get("ret_20"))),
-        ("操作信号", signal),
-        ("参考价", reference),
-        ("分批参考区间", buy_range),
-        ("逻辑失效价", invalidation),
-        ("目标一 / 二", targets),
+        ("收盘价", format_number(row.get("close")), ""),
+        ("综合得分", format_score_100(row.get("score")), ""),
+        ("权重覆盖", format_pct(row.get("score_coverage"), 0), ""),
+        ("20日收益", format_pct(row.get("ret_20")), a_share_return_class(row.get("ret_20"))),
+        ("操作信号", signal, ""),
+        ("参考价", reference, ""),
+        ("分批参考区间", buy_range, ""),
+        ("逻辑失效价", invalidation, ""),
+        ("目标一 / 二", targets, ""),
     ]
     stats_html = ["<div class='detail-stat-grid'>"]
     stats_html.extend(
         "<div class='detail-stat-item'><span class='detail-stat-label'>"
-        f"{escape(label)}</span><strong class='detail-stat-value'>{escape(value)}</strong></div>"
-        for label, value in detail_stats
+        f"{escape(label)}</span><strong class='detail-stat-value {tone}'>{escape(value)}</strong></div>"
+        for label, value, tone in detail_stats
     )
     stats_html.append("</div>")
     st.markdown("".join(stats_html), unsafe_allow_html=True)
@@ -614,7 +640,7 @@ def render_stock_cards(result, config: AppConfig) -> None:
         )
         key = f"candidate-table-{industry_filter}-{signal_filter}-{search}"
         selection = st.dataframe(
-            table,
+            table.style.map(a_share_return_style, subset=["20日"]),
             hide_index=True,
             width="stretch",
             height=458,
@@ -783,13 +809,22 @@ def render_forward_validation(config: AppConfig) -> None:
                 "excess_std": "超额波动",
             }
         )
-        for column in ("推荐平均收益", "全市场平均收益", "平均超额", "超额波动"):
-            if column in display:
-                display[column] = display[column].map(
-                    lambda value: "" if pd.isna(value) else f"{float(value):+.2%}"
-                )
+        return_columns = [
+            column
+            for column in ("推荐平均收益", "全市场平均收益", "平均超额")
+            if column in display
+        ]
+        format_columns = [
+            column
+            for column in (*return_columns, "超额波动")
+            if column in display
+        ]
+        styled_display = display.style.map(a_share_return_style, subset=return_columns).format(
+            {column: "{:+.2%}" for column in format_columns},
+            na_rep="",
+        )
         st.markdown("**按持有期汇总**")
-        st.dataframe(display, hide_index=True, width="stretch")
+        st.dataframe(styled_display, hide_index=True, width="stretch")
     else:
         metric_cols[3].metric("已完成验证项", "0")
         st.info("验证文件尚未生成；下一次同步会自动创建。")

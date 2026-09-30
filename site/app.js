@@ -29,11 +29,22 @@ function percent(value, digits = 1) {
   return parsed > 0 ? `+${formatted}` : formatted;
 }
 
+function marketMoveClass(value) {
+  const parsed = numericValue(value);
+  if (!Number.isFinite(parsed) || parsed === 0) return "";
+  return parsed > 0 ? "positive" : "negative";
+}
+
 function makeNode(tag, className = "", textValue = "") {
   const element = document.createElement(tag);
   if (className) element.className = className;
   element.textContent = textValue == null ? "" : String(textValue);
   return element;
+}
+
+function returnValueNode(value, digits = 1) {
+  const tone = marketMoveClass(value);
+  return makeNode("span", `return-value${tone ? ` ${tone}` : ""}`, percent(value, digits));
 }
 
 function signalClass(signal) {
@@ -144,7 +155,8 @@ function renderCandidate(item, rank, selected) {
   const signal = makeNode("span", `candidate-signal ${signalClass(item.operation_signal)}`, item.operation_signal || "未标注");
   const score = makeNode("span", "candidate-score", number(numericValue(item.score) * 100, 1));
   score.title = "综合得分，满分 100 分";
-  const ret = makeNode("span", `candidate-return${numericValue(item.ret_20) < 0 ? " negative" : ""}`, percent(item.ret_20));
+  const returnTone = marketMoveClass(item.ret_20);
+  const ret = makeNode("span", `candidate-return${returnTone ? ` ${returnTone}` : ""}`, percent(item.ret_20));
   button.append(identity, signal, score, ret);
   button.addEventListener("click", () => {
     selectedSymbol = item.symbol;
@@ -157,9 +169,12 @@ function renderCandidate(item, rank, selected) {
   return row;
 }
 
-function addDetailStat(parent, label, value) {
+function addDetailStat(parent, label, value, tone = "") {
   const cell = makeNode("div", "detail-stat");
-  cell.append(makeNode("span", "detail-stat-label", label), makeNode("strong", "detail-stat-value", value));
+  cell.append(
+    makeNode("span", "detail-stat-label", label),
+    makeNode("strong", `detail-stat-value${tone ? ` ${tone}` : ""}`, value),
+  );
   parent.append(cell);
 }
 
@@ -348,7 +363,7 @@ function renderStockDetail(item, rank) {
   addDetailStat(stats, "收盘价", price(item.close));
   addDetailStat(stats, "综合得分", scoreOutOf100(item.score));
   addDetailStat(stats, "权重覆盖", item.score_coverage == null ? "—" : percent(item.score_coverage, 0));
-  addDetailStat(stats, "近 20 日", percent(item.ret_20));
+  addDetailStat(stats, "近 20 日", percent(item.ret_20), marketMoveClass(item.ret_20));
 
   const signal = makeNode("p", `detail-signal ${signalClass(item.operation_signal)}`);
   signal.append(makeNode("span", "", "操作信号"), makeNode("strong", "", item.operation_signal || "未标注"));
@@ -380,7 +395,11 @@ function renderStockDetail(item, rank) {
   const insight = makeNode("p", "detail-insight");
   const pe = numericValue(item.pe_ttm);
   const peText = Number.isFinite(pe) && pe > 0 ? number(pe, 1) : "—";
-  insight.textContent = `相对大盘 ${percent(item.relative_ret_20)} · PE(TTM) ${peText}`;
+  insight.append(
+    document.createTextNode("相对大盘 "),
+    returnValueNode(item.relative_ret_20),
+    document.createTextNode(` · PE(TTM) ${peText}`),
+  );
   panel.append(insight);
 }
 
@@ -397,12 +416,21 @@ function renderEvaluations(rows) {
     const measured = Number(row.measured) || 0;
     const runs = Number(row.runs) || 0;
     const ready = Number.isFinite(excess) && measured > 0;
+    const excessTone = ready ? marketMoveClass(excess) : "";
     card.append(makeNode("p", "evaluation-state", ready ? `已完成 ${measured} / ${runs} 个推荐批次` : "样本积累中，暂无成熟结果"));
-    card.append(makeNode("p", `evaluation-excess${ready ? (excess >= 0 ? " positive" : " negative") : ""}`, ready ? percent(excess, 2) : "待验证"));
-    const details = ready
-      ? `候选平均 ${percent(row.pick_ret, 2)} · 全市场等权 ${percent(row.universe_ret, 2)}`
-      : "持有期尚未走完或有效样本不足。";
-    card.append(makeNode("p", "evaluation-sub", ready ? `平均超额收益 · ${details}` : details));
+    card.append(makeNode("p", `evaluation-excess${excessTone ? ` ${excessTone}` : ""}`, ready ? percent(excess, 2) : "待验证"));
+    const details = makeNode("p", "evaluation-sub");
+    if (ready) {
+      details.append(
+        document.createTextNode("平均超额收益 · 候选平均 "),
+        returnValueNode(row.pick_ret, 2),
+        document.createTextNode(" · 全市场等权 "),
+        returnValueNode(row.universe_ret, 2),
+      );
+    } else {
+      details.textContent = "持有期尚未走完或有效样本不足。";
+    }
+    card.append(details);
     container.append(card);
   }
 }
