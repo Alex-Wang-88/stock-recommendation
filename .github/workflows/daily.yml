@@ -162,6 +162,15 @@ jobs:
           echo "exit_code=$result" >> "$GITHUB_OUTPUT"
           exit 0
 
+      - name: Refresh recommendation from completed saved data
+        id: refresh-recommendation
+        if: always() && steps.restore-runtime-state.outcome == 'success' && github.event.inputs.restore_snapshot_key == ''
+        timeout-minutes: 10
+        shell: bash
+        env:
+          DAILY_EXIT_CODE: ${{ steps.daily-job.outputs.exit_code }}
+        run: python scripts/refresh_public_recommendation.py --preset low-position --sync-exit-code "$DAILY_EXIT_CODE"
+
       - name: Stage a complete runtime snapshot
         id: stage-state
         if: always() && steps.restore-runtime-state.outcome == 'success'
@@ -240,7 +249,7 @@ jobs:
               printf -- '- Restored cache key: `%s`\n' "$RESTORE_SNAPSHOT_KEY"
               echo "- Mode: restore only; daily sync was not run."
             elif [[ "$EVENT_NAME" == "push" ]]; then
-              echo "- Mode: published the latest saved state; daily sync was not run."
+              echo "- Mode: rebuilt recommendations from saved data; daily sync was not run."
             else
               printf -- '- Daily sync exit code: `%s`\n' "${DAILY_EXIT_CODE:-unavailable}"
             fi

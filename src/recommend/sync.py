@@ -582,6 +582,7 @@ def _run_sync_all_unlocked(
             table = context.build()
             spec = replace(spec, as_of=table.as_of)
             screened = run_screen(table, spec, config.rank.as_dict())
+        screened.notes[:0] = result.notes
 
         reports_dir = Path(config.reports_dir)
         reports_dir.mkdir(parents=True, exist_ok=True)
