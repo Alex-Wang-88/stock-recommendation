@@ -30,7 +30,13 @@ from .forward import append_record, build_record, evaluate_and_persist, spec_fin
 from .fundamentals import sync_baostock
 from .http import ThrottledClient
 from .locking import SyncAlreadyRunning, sync_lock
-from .market import MarketStore, intraday_sync_block_reason, is_current_eod_ready
+from .market import (
+    MarketStore,
+    intraday_sync_block_reason,
+    is_closed_eod_ready,
+    is_current_eod_ready,
+    is_forward_eod_ready,
+)
 from .report import render_markdown
 from .screen import Spec, run_screen
 from .screen.presets import load_preset
@@ -320,6 +326,7 @@ def _sync_fundamentals(
             financial_refresh_days=config.fundamentals.financial_refresh_days,
             workers=config.fundamentals.workers,
             history_periods=config.fundamentals.history_periods,
+            financial_batch_size=config.fundamentals.financial_batch_size,
             progress=on_progress,
             sync_run_id=sync_run_id,
         )
@@ -459,7 +466,11 @@ def _run_sync_all_unlocked(
             result.as_of = store.latest_complete_trade_date()
             trade_dates = store.trade_dates(end=result.as_of)
             market_fresh = advance.up_to_date or bool(advance.rows)
-            current_eod_ready = market_fresh and is_current_eod_ready(raw_market_as_of)
+            recommendation_ready = (
+                market_fresh
+                and result.as_of == raw_market_as_of
+                and is_closed_eod_ready(result.as_of)
+            )
         market_status = "done" if advance.up_to_date or advance.rows else "warning"
         market_summary = advance.summary().splitlines()[0]
         market_detail = "；".join(advance.notes)
@@ -504,7 +515,7 @@ def _run_sync_all_unlocked(
                 add_step(key, "skipped", summary)
                 emit(key, stage_fraction(stage_index), summary, "skipped")
                 continue
-            if key == "sector" and not current_eod_ready:
+            if key == "sector" and not (market_fresh and is_current_eod_ready(result.as_of)):
                 summary = (
                     "当前没有可安全归档的已收盘板块快照；"
                     f"本次使用 {result.as_of}，下一个交易日收盘后再同步板块快照"
@@ -552,9 +563,9 @@ def _run_sync_all_unlocked(
         summary = "已按调用方要求跳过推荐生成"
         add_step("recommendation", "skipped", summary)
         emit("recommendation", stage_fraction(recommendation_index), summary, "skipped")
-    elif not current_eod_ready:
+    elif not recommendation_ready:
         summary = (
-            f"最新行情日期 {raw_market_as_of} 不是今天已确认收盘的数据；"
+            f"最新行情日期 {raw_market_as_of} 尚未确认完整收盘数据；"
             "本次只补行情和可回补归档，不生成新的推荐或前向留证"
         )
         add_step("recommendation", "skipped", summary)
@@ -562,7 +573,7 @@ def _run_sync_all_unlocked(
     else:
         emit("recommendation", stage_fraction(recommendation_index, 0.0), "用本地归档重新计算推荐…")
     try:
-        if skip_recommendation or not current_eod_ready:
+        if skip_recommendation or not recommendation_ready:
             raise _SkipSyncStage
         payload = load_preset(preset)
         payload["as_of"] = result.as_of
@@ -577,7 +588,10 @@ def _run_sync_all_unlocked(
         report_path = reports_dir / f"{screened.as_of}__{spec_fingerprint(screened.spec)}.md"
         csv_path = reports_dir / f"{screened.as_of}__{spec_fingerprint(screened.spec)}.csv"
         report_text = render_markdown(
-            screened, spec_hash=spec_fingerprint(screened.spec), sync_run_id=result.sync_run_id
+            screened,
+            spec_hash=spec_fingerprint(screened.spec),
+            sync_run_id=result.sync_run_id,
+            generated_at=local_now(),
         )
         report_path.write_text(report_text, encoding="utf-8")
         screened.frame.to_csv(csv_path, index=False, encoding="utf-8-sig")
@@ -597,17 +611,34 @@ def _run_sync_all_unlocked(
         emit("recommendation", stage_fraction(validation_index - 1), message, "failed")
 
     # 4. 推荐留证与前向验证 -----------------------------------------------
+    # 在生成完成时重新判断窗口，防止慢任务跨过下一次开盘。
+    forward_ready = recommendation_ready and is_forward_eod_ready(result.as_of)
     if skip_validation:
         summary = "已按调用方要求跳过推荐留证与验证"
         add_step("validation", "skipped", summary)
         emit("validation", stage_fraction(validation_index), summary, "skipped")
-    elif not current_eod_ready:
-        summary = "没有生成当日收盘推荐，本次不新增前向留证"
-        add_step("validation", "skipped", summary)
-        emit("validation", stage_fraction(validation_index), summary, "skipped")
+    elif not forward_ready:
+        summary = "推荐按最近完整交易日发布；已过下一工作日开盘，不补造历史前向留证"
+        if not recommendation_ready:
+            summary = "完整收盘行情尚未确认，本次不新增前向留证"
+        try:
+            with MarketStore(market_path) as store:
+                _per_run, grouped, evaluation_path, summary_path = evaluate_and_persist(
+                    store, Path(config.reports_dir) / "forward"
+                )
+            result.evaluation_path = evaluation_path
+            result.evaluation_summary_path = summary_path
+            result.validation_summary = grouped
+            add_step("validation", "done", summary + "；已更新已有记录的后续表现")
+            emit("validation", stage_fraction(validation_index), summary, "done")
+        except Exception as error:  # noqa: BLE001 - 不影响已生成的推荐
+            message = f"历史验证更新失败：{type(error).__name__}: {error}"
+            add_step("validation", "warning", message)
+            result.notes.append(message)
+            emit("validation", stage_fraction(validation_index), message, "warning")
     else:
         emit("validation", stage_fraction(validation_index, 0.0), "记录本次推荐并更新历史验证…")
-    if skip_validation or not current_eod_ready:
+    if skip_validation or not forward_ready:
         pass
     elif result.screen is None:
         message = "推荐未生成，无法创建前向留证"

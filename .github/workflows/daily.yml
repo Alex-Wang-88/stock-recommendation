@@ -36,6 +36,10 @@ jobs:
       TZ: Asia/Shanghai
       STATE_CACHE_KEY: stock-state-v1-${{ github.run_id }}-${{ github.run_attempt }}
       RESTORE_SNAPSHOT_KEY: ${{ github.event.inputs.restore_snapshot_key || '' }}
+      OMP_NUM_THREADS: "6"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "6"
 
     steps:
       - name: Check out code without downloading LFS data
@@ -135,6 +139,7 @@ jobs:
           set -euo pipefail
           rm -f \
             data/archive.duckdb \
+            data/archive.duckdb.wal \
             data/market/daily.parquet \
             data/reference/instrument_master.parquet \
             data/reference/industry_master.csv
@@ -151,19 +156,24 @@ jobs:
         shell: bash
         run: |
           set +e
-          python -m recommend.cli daily-job --preset low-position --workers 8
+          # Reserve time for checkpointing and Pages even if an upstream service stalls.
+          timeout --signal=TERM --kill-after=30s 50m python -u -m recommend.cli daily-job --preset low-position --workers 6
           result=$?
           echo "exit_code=$result" >> "$GITHUB_OUTPUT"
           exit 0
 
       - name: Stage a complete runtime snapshot
-        if: always()
+        id: stage-state
+        if: always() && steps.restore-runtime-state.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
           rm -rf runtime-state
           mkdir -p runtime-state/data/market runtime-state/data/reference
           cp data/archive.duckdb runtime-state/data/archive.duckdb
+          if [[ -f data/archive.duckdb.wal ]]; then
+            cp data/archive.duckdb.wal runtime-state/data/archive.duckdb.wal
+          fi
           cp data/market/daily.parquet runtime-state/data/market/daily.parquet
           cp data/reference/instrument_master.parquet runtime-state/data/reference/
           cp data/reference/industry_master.csv runtime-state/data/reference/
@@ -172,15 +182,28 @@ jobs:
           fi
 
       - name: Save this run as a seven-day recovery point
-        if: always() && github.event_name != 'push' && hashFiles('runtime-state/data/archive.duckdb', 'runtime-state/data/market/daily.parquet') != ''
+        if: always() && github.event_name != 'push' && steps.stage-state.outcome == 'success'
         uses: actions/cache/save@v6
         with:
           path: runtime-state
           key: ${{ env.STATE_CACHE_KEY }}
 
-      - name: Delete older latest-state artifacts
+      - name: Update the latest complete state artifact
+        id: upload-state
+        if: always() && github.event_name != 'push' && steps.stage-state.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: stock-state-latest
+          path: runtime-state/
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+          compression-level: 0
+
+      - name: Delete older latest-state artifacts after saving the new state
         id: prune-artifacts
-        if: always() && github.event_name != 'push' && hashFiles('runtime-state/data/archive.duckdb', 'runtime-state/data/market/daily.parquet') != ''
+        if: always() && steps.upload-state.outcome == 'success'
+        continue-on-error: true
         uses: actions/github-script@v9
         with:
           script: |
@@ -188,7 +211,9 @@ jobs:
               github.rest.actions.listArtifactsForRepo,
               { owner: context.repo.owner, repo: context.repo.repo, per_page: 100 }
             );
-            const previous = artifacts.filter((artifact) => artifact.name === "stock-state-latest");
+            const previous = artifacts.filter((artifact) =>
+              artifact.name === "stock-state-latest" && artifact.workflow_run?.id !== context.runId
+            );
             for (const artifact of previous) {
               await github.rest.actions.deleteArtifact({
                 owner: context.repo.owner,
@@ -197,17 +222,6 @@ jobs:
               });
               core.info(`Deleted prior artifact ${artifact.id}`);
             }
-
-      - name: Update the latest complete state artifact
-        if: always() && github.event_name != 'push' && steps.prune-artifacts.outcome == 'success' && hashFiles('runtime-state/data/archive.duckdb', 'runtime-state/data/market/daily.parquet') != ''
-        uses: actions/upload-artifact@v7
-        with:
-          name: stock-state-latest
-          path: runtime-state/
-          if-no-files-found: error
-          retention-days: 7
-          overwrite: true
-          compression-level: 0
 
       - name: Write snapshot recovery details
         if: always()
@@ -221,14 +235,14 @@ jobs:
           {
             echo "## State snapshot"
             echo
-            echo "- Cache key: `$STATE_CACHE_KEY`"
+            printf -- '- Cache key: `%s`\n' "$STATE_CACHE_KEY"
             if [[ -n "$RESTORE_SNAPSHOT_KEY" ]]; then
-              echo "- Restored cache key: `$RESTORE_SNAPSHOT_KEY`"
+              printf -- '- Restored cache key: `%s`\n' "$RESTORE_SNAPSHOT_KEY"
               echo "- Mode: restore only; daily sync was not run."
             elif [[ "$EVENT_NAME" == "push" ]]; then
               echo "- Mode: published the latest saved state; daily sync was not run."
             else
-              echo "- Daily sync exit code: `${DAILY_EXIT_CODE:-unavailable}`"
+              printf -- '- Daily sync exit code: `%s`\n' "${DAILY_EXIT_CODE:-unavailable}"
             fi
             echo "- The runtime snapshot excludes the one-time source Parquet files."
           } >> "$GITHUB_STEP_SUMMARY"
@@ -240,18 +254,18 @@ jobs:
         run: python scripts/build_public_site.py --data-dir data --source-dir site --output-dir _site
 
       - name: Configure GitHub Pages
-        if: steps.build-public-site.outcome == 'success'
+        if: ${{ !cancelled() && steps.build-public-site.outcome == 'success' }}
         uses: actions/configure-pages@v5
 
       - name: Upload the public site artifact
-        if: steps.build-public-site.outcome == 'success'
+        if: ${{ !cancelled() && steps.build-public-site.outcome == 'success' }}
         uses: actions/upload-pages-artifact@v4
         with:
           path: _site
 
       - name: Deploy the public recommendation site
         id: pages-deployment
-        if: steps.build-public-site.outcome == 'success'
+        if: ${{ !cancelled() && steps.build-public-site.outcome == 'success' }}
         uses: actions/deploy-pages@v4
 
       - name: Report daily sync failure

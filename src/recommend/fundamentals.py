@@ -14,6 +14,7 @@ import contextlib
 import datetime as dt
 import io
 import re
+import socket
 from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -91,6 +92,7 @@ class FundamentalSyncResult:
     financial_ok: int = 0
     financial_empty: int = 0
     financial_rows: int = 0
+    financial_deferred: int = 0
     skipped_valuation: bool = False
     skipped_financial: bool = False
     failures: list[tuple[str, str]] = field(default_factory=list)
@@ -120,11 +122,13 @@ class FundamentalSyncResult:
             else f"估值快照 {self.valuation_attempted}，写入 {self.valuation_rows} 行"
         )
         financial = (
-            "已覆盖，跳过"
+            "近期已检查，跳过"
             if self.skipped_financial
             else f"财务股票 {self.financial_attempted}，归档 {self.financial_rows} 行"
         )
         text = f"BaoStock：{valuation}；{financial}"
+        if self.financial_deferred:
+            text += f"；待轮换检查 {self.financial_deferred} 只"
         if self.failures:
             text += f"；失败 {len(self.failures)}（样例：{self.failures[:2]}）"
         return text
@@ -254,6 +258,7 @@ def _init_financial_worker() -> None:
     """
 
     global _WORKER_BAOSTOCK, _WORKER_ERROR
+    socket.setdefaulttimeout(30)
     try:
         _WORKER_BAOSTOCK = _load_baostock()
         output = io.StringIO()
@@ -508,6 +513,52 @@ def _prepare_financial(
     )
 
 
+def _financial_refresh_batch(
+    store: ArchiveStore,
+    codes: list[str],
+    as_of: str,
+    periods: list[str],
+    now: dt.datetime,
+    refresh_days: int,
+    batch_size: int,
+) -> tuple[list[str], int]:
+    """按检查时间轮换；新财报尚未披露不再触发全市场重复下载。"""
+
+    states = {
+        symbol: (str(period)[:10], checked_at, status)
+        for symbol, period, checked_at, status in store.conn.execute(
+            "select symbol, checked_period, checked_at, status from financial_sync_state"
+        ).fetchall()
+    }
+    archived = {
+        symbol: (checked_at, sum(str(period)[:10] in periods for period in stat_dates))
+        for symbol, checked_at, stat_dates in store.conn.execute(
+            "select symbol, max(fetched_at), list(distinct stat_date) "
+            "from financial_quarterly where pub_date <= ? group by symbol",
+            [_asof_date(as_of)],
+        ).fetchall()
+    }
+    due: list[tuple[dt.datetime, str]] = []
+    for symbol in codes:
+        fetched_at, covered = archived.get(symbol, (None, 0))
+        period, checked_at, status = states.get(symbol, (None, None, "OK"))
+        # 兼容旧快照：已有财报的 fetched_at 就是实际检查时点，升级后无需重抓全市场。
+        if fetched_at is not None and (checked_at is None or fetched_at > checked_at):
+            checked_at = fetched_at
+            period = _latest_quarter(checked_at.date().isoformat())[2]
+            status = "OK"
+        retry_days = 1 if status == "FAILED" else (7 if covered < len(periods) else refresh_days)
+        if (
+            checked_at is None
+            or period != periods[0]
+            or now - checked_at >= dt.timedelta(days=max(1, retry_days))
+        ):
+            due.append((checked_at or dt.datetime.min, symbol))
+    due.sort()
+    selected = [symbol for _, symbol in due[:max(1, batch_size)]]
+    return selected, len(due) - len(selected)
+
+
 def sync_baostock(
     store: ArchiveStore,
     *,
@@ -518,15 +569,16 @@ def sync_baostock(
     financial_refresh_days: int = 45,
     workers: int = 4,
     history_periods: int = 5,
+    financial_batch_size: int = 250,
     progress: Progress | None = None,
     sync_run_id: str | None = None,
 ) -> FundamentalSyncResult:
     """同步当前交易日估值和最近若干期已披露财报。
 
-    首次运行建立**当前全市场快照**，而不是对每只股票回补数百个历史日：BaoStock
+    首次运行分批建立**当前全市场快照**，而不是对每只股票回补数百个历史日：BaoStock
     的免费接口按股票逐只返回，盲目全历史回补会让启动任务长时间占用网络。这里固定
     保留至少 `history_periods` 个报告期，保证增长趋势与财务质量因子有足够历史；之后
-    每个新交易日只新增一份估值快照，新报告期出现或覆盖不足时才重新检查财务。
+    每个交易日从本地财报重建估值；财务按股票检查时间限量轮换，新报告期逐步追平。
     ``start_date`` 保留在接口中，方便以后加入受控的历史基本面回补，不影响当前断点逻辑。
     """
 
@@ -551,23 +603,21 @@ def sync_baostock(
         result.failures.append(("symbols", "没有可用的 A 股代码"))
         return finish()
 
-    as_of_date = _asof_date(as_of)
     valuation_needed = str(as_of)[:10] not in store.valuation_dates()
-    year, quarter, stat_date = _latest_quarter(as_of)
+    stat_date = _latest_quarter(as_of)[2]
     history_periods = max(5, int(history_periods))
     periods = _period_candidates(as_of, limit=history_periods)
     stat_dates = [_period_stat_date(year_, quarter_) for year_, quarter_ in periods]
-    covered = store.financial_period_coverage(stat_date, as_of)
-    threshold = max(1, int(len(codes) * 0.80))
-    latest_pub = store.conn.execute(
-        "select max(pub_date) from financial_quarterly where pub_date <= ?",
-        [as_of_date],
-    ).fetchone()[0]
-    stale = latest_pub is None or (as_of_date - latest_pub).days > max(1, financial_refresh_days)
-    history_missing = any(
-        store.financial_period_coverage(period, as_of) < threshold for period in stat_dates
+    financial_codes, result.financial_deferred = _financial_refresh_batch(
+        store,
+        codes,
+        as_of,
+        stat_dates,
+        started.replace(tzinfo=None),
+        financial_refresh_days,
+        financial_batch_size,
     )
-    financial_needed = covered < threshold or history_missing or stale
+    financial_needed = bool(financial_codes)
     result.skipped_valuation = not valuation_needed
     result.skipped_financial = not financial_needed
 
@@ -577,11 +627,10 @@ def sync_baostock(
         return finish()
 
     fetched_at = dt.datetime.now(dt.UTC).replace(tzinfo=None)
-    financial_frames: list[pd.DataFrame] = []
     if financial_needed:
-        result.financial_attempted = len(codes)
-        worker_count = max(1, min(int(workers), len(codes)))
-        payloads = [(symbol, str(as_of)[:10], periods) for symbol in codes]
+        result.financial_attempted = len(financial_codes)
+        worker_count = max(1, min(int(workers), len(financial_codes)))
+        payloads = [(symbol, str(as_of)[:10], periods) for symbol in financial_codes]
         try:
             with ProcessPoolExecutor(
                 max_workers=worker_count,
@@ -604,27 +653,37 @@ def sync_baostock(
                     elif frame.empty:
                         result.financial_empty += 1
                     else:
-                        financial_frames.append(frame)
+                        result.financial_rows += store.upsert(
+                            "financial_quarterly", frame, FINANCIAL_COLUMNS
+                        )
                         result.financial_ok += 1
-                    if progress and (index == 1 or index % 25 == 0 or index == len(codes)):
+                    # 空结果也要记检查时间，避免未披露/无覆盖股票每天反复占用全部预算。
+                    store.conn.execute(
+                        "insert or replace into financial_sync_state values (?, ?, ?, ?)",
+                        [
+                            symbol,
+                            stat_date,
+                            dt.datetime.now(dt.UTC).replace(tzinfo=None),
+                            "FAILED" if error_text else "OK",
+                        ],
+                    )
+                    if progress and (
+                        index == 1 or index % 25 == 0 or index == len(financial_codes)
+                    ):
                         progress(
                             index,
-                            len(codes),
-                            f"BaoStock 财务 {index}/{len(codes)}（{worker_count}进程）",
+                            len(financial_codes),
+                            f"BaoStock 财务 {index}/{len(financial_codes)}（{worker_count}进程）",
                         )
         except Exception as error:  # noqa: BLE001 - 汇总进程池/依赖错误
             result.failures.append(("pool", f"{type(error).__name__}: {error}"))
-        if financial_frames:
-            financial = pd.concat(financial_frames, ignore_index=True)
-            result.financial_rows = store.upsert(
-                "financial_quarterly", financial, FINANCIAL_COLUMNS
-            )
     elif progress:
-        progress(1, 1, "财务报告期已覆盖，跳过")
+        progress(1, 1, "财务近期已检查，跳过重复抓取")
 
     # 财务归档完成后再构造估值快照。这样首次运行不会对 5000 多只股票再发一轮
     # history_k_data 请求；后续若财务已覆盖，也完全可以只用本地归档重建 PE(TTM)。
-    if valuation_needed:
+    if valuation_needed or result.financial_rows:
+        result.skipped_valuation = False
         financial_asof = store.financial_asof(str(as_of)[:10])
         result.valuation_attempted = len(codes)
         valuation = _prepare_derived_valuation(

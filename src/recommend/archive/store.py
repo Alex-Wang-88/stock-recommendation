@@ -26,6 +26,14 @@ TAG_SEPARATORS = "+、,，/|"
 
 SCHEMA: tuple[str, ...] = (
     """
+    create table if not exists financial_sync_state (
+        symbol         varchar primary key,
+        checked_period date not null,
+        checked_at     timestamp not null,
+        status         varchar not null
+    )
+    """,
+    """
     create table if not exists theme_attribution (
         trade_date    date      not null,
         symbol        varchar   not null,

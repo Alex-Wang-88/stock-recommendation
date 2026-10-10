@@ -65,6 +65,7 @@ class FundamentalsConfig:
     financial_refresh_days: int = 45
     workers: int = 4
     history_periods: int = 5
+    financial_batch_size: int = 250
 
 
 @dataclass(frozen=True)
@@ -196,6 +197,14 @@ class AppConfig:
                     int(
                         fundamentals.get(
                             "history_periods", defaults.fundamentals.history_periods
+                        )
+                    ),
+                ),
+                financial_batch_size=max(
+                    1,
+                    int(
+                        fundamentals.get(
+                            "financial_batch_size", defaults.fundamentals.financial_batch_size
                         )
                     ),
                 ),

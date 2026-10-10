@@ -67,6 +67,31 @@ def is_current_eod_ready(trade_date: str, now: datetime | None = None) -> bool:
     return _iso(trade_date) == current.date().isoformat() and current.time() >= A_SHARE_EOD_READY
 
 
+def is_closed_eod_ready(trade_date: str, now: datetime | None = None) -> bool:
+    """允许使用已经结束的行情日；不将盘中或未来日期视为完整收盘。"""
+
+    current = _shanghai_now(now)
+    day = date.fromisoformat(_iso(trade_date))
+    return day < current.date() or (day == current.date() and current.time() >= A_SHARE_EOD_READY)
+
+
+def is_forward_eod_ready(trade_date: str, now: datetime | None = None) -> bool:
+    """收盘后至下一个工作日开盘前允许留证，兼容任务延迟到午夜后。
+
+    不推断节假日：在下一个工作日 09:30 后保守停止新增历史留证。
+    当日限定的 T2 板块快照仍须使用 ``is_current_eod_ready``。
+    """
+
+    current = _shanghai_now(now)
+    day = date.fromisoformat(_iso(trade_date))
+    closed_at = datetime.combine(day, A_SHARE_EOD_READY, SHANGHAI_TIMEZONE)
+    next_session = day + timedelta(days=1)
+    while next_session.weekday() >= 5:
+        next_session += timedelta(days=1)
+    opens_at = datetime.combine(next_session, A_SHARE_SYNC_BLOCK_START, SHANGHAI_TIMEZONE)
+    return closed_at <= current < opens_at
+
+
 def intraday_sync_block_reason(now: datetime | None = None) -> str | None:
     """盘中暂停日常同步，避免把当日未完成行情写入本地推荐数据。"""
 

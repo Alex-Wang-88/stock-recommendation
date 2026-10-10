@@ -50,7 +50,13 @@ from .factors import FACTOR_CATEGORY, ID_COLUMNS
 from .forward import append_record, build_record, evaluate_and_persist, spec_fingerprint
 from .http import ThrottledClient
 from .locking import SyncAlreadyRunning, sync_lock
-from .market import MarketStore, intraday_sync_block_reason, is_current_eod_ready
+from .market import (
+    MarketStore,
+    intraday_sync_block_reason,
+    is_closed_eod_ready,
+    is_current_eod_ready,
+    is_forward_eod_ready,
+)
 from .report import render_markdown, to_display
 from .screen import FILTER_FIELDS, Spec, SpecError, run_screen
 from .screen.presets import PRESETS, load_preset
@@ -401,6 +407,7 @@ def _persist_report(result, out: Path, *, sync_run_id: str = "") -> None:
             result,
             spec_hash=spec_fingerprint(result.spec),
             sync_run_id=sync_run_id,
+            generated_at=local_now(),
         ),
         encoding="utf-8",
     )
@@ -508,11 +515,14 @@ def _screen_and_record(
     for note in result.notes:
         print(f"  ! {note}")
 
-    record = build_record(result, run_at=local_now(), sync_run_id=sync_run_id)
     directory = _forward_dir(config, args.forward_dir)
-    record_path, journal_path = append_record(directory, record)
-    print(f"📌 留证 {record_path}")
-    print(f"📌 汇总 {journal_path}（spec 指纹 {record.spec_hash}）")
+    if is_forward_eod_ready(result.as_of):
+        record = build_record(result, run_at=local_now(), sync_run_id=sync_run_id)
+        record_path, journal_path = append_record(directory, record)
+        print(f"📌 留证 {record_path}")
+        print(f"📌 汇总 {journal_path}（spec 指纹 {record.spec_hash}）")
+    else:
+        print("⏭️ 已过下一工作日开盘；更新推荐和历史验证，不补造历史前向留证。")
 
     with MarketStore(config.market.daily_parquet) as market:
         _per_run, grouped, evaluation_path, summary_path = evaluate_and_persist(
@@ -566,9 +576,9 @@ def _cmd_daily_advance_unlocked(config: AppConfig, args: argparse.Namespace) -> 
     if not (advance.up_to_date or advance.rows):
         print("⏭️ 行情推进未确认完成，本次不生成前向推荐。")
         return 0
-    if not is_current_eod_ready(as_of):
+    if not is_closed_eod_ready(as_of):
         print(
-            f"⏭️ 最新完整行情日为 {as_of}，不是今天已确认收盘的数据；"
+            f"⏭️ 最新行情日为 {as_of}，尚未确认完整收盘数据；"
             "本次不补造历史前向推荐。"
         )
         return 0
@@ -789,15 +799,15 @@ def _cmd_daily_job_unlocked(config: AppConfig, args: argparse.Namespace) -> int:
     # -- 4. 筛选 + 留证（前向纸盘的核心产出） ------------------------------- #
     if args.no_screen:
         report.append("筛选留证：已跳过（--no-screen）")
-    elif not market_fresh or not is_current_eod_ready(as_of):
+    elif not market_fresh or not is_closed_eod_ready(as_of):
         report.append(
-            f"筛选留证：跳过（最新完整行情日 {as_of} 不是今天已确认收盘的数据；不补造前向推荐）"
+            f"筛选留证：跳过（行情日 {as_of} 尚未确认完整收盘数据）"
         )
     else:
         print()
         code = _screen_and_record(config, args, as_of)
         if code == 0:
-            report.append(f"筛选留证：as-of {as_of} 已落盘（spec 指纹见上）")
+            report.append(f"筛选报告：as-of {as_of} 已落盘（前向留证受下一工作日开盘限制）")
         else:
             ok = False
             report.append(f"筛选留证：❌ 失败（退出码 {code}）")

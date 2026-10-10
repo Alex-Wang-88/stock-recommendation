@@ -244,7 +244,11 @@ def markdown_table(view: pd.DataFrame) -> str:
 
 
 def render_markdown(
-    result: ScreenResult, *, spec_hash: str | None = None, sync_run_id: str | None = None
+    result: ScreenResult,
+    *,
+    spec_hash: str | None = None,
+    sync_run_id: str | None = None,
+    generated_at: str | None = None,
 ) -> str:
     """完整报告：条件 → 数据时点 → 剔除日志 → 候选表 → 每条的理由。"""
 
@@ -264,6 +268,8 @@ def render_markdown(
 
     lines.append("## 数据时点（每条推荐的日期口径）")
     lines.append(f"- 行情 / 因子：{result.as_of}")
+    if generated_at:
+        lines.append(f"- 生成时间（北京时间）：{generated_at}")
     lines.append(f"- 题材 / 龙头 / 两融：{result.as_of} 及之前 20 个交易日")
     lines.append("- ⚠️ 名称（含 ST 标记）取**当前**状态；本表不用于历史回看。")
     lines.append("")
