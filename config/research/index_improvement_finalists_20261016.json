@@ -1,0 +1,79 @@
+{
+  "research_only": true,
+  "production_release": false,
+  "selected": {
+    "plan_sha256": "e9a387ad12fa45fa9bc927d2828ad667940a1485fda147fc96eda8a4294e45a6",
+    "development_summary_sha256": "5477b56dad160b39d0b46f7a4034c9ff54f6179d6f1669146ad5ce97d50921ad",
+    "selection_before_external_return_evaluation": true,
+    "selection_method": "one finalist per pool; all-gate passers first; otherwise provisional only; sort by smallest maximum shortfall across entry-year, drop-best and 20bps excess, then mean own-index excess, then candidate id; never reselect after external results",
+    "finalists": [
+      {
+        "id": "F5_P4",
+        "family": "F5",
+        "name": "spread_100",
+        "scorer": "P4",
+        "volume_min": 0.0,
+        "rebalance_days": 10,
+        "positions": 100,
+        "retain_rank": 150,
+        "weighting": "equal",
+        "pool": "csi300",
+        "development_all_gates_passed": false,
+        "development_mean_excess": 0.0024861794919300464,
+        "development_robust_floor": -0.004828315250019701,
+        "release_eligible": false
+      },
+      {
+        "id": "F1_Lasso",
+        "family": "F1",
+        "name": "remove_volume_gate",
+        "scorer": "Lasso",
+        "volume_min": 0.0,
+        "rebalance_days": 5,
+        "positions": 25,
+        "retain_rank": 40,
+        "weighting": "equal",
+        "pool": "csi500",
+        "development_all_gates_passed": false,
+        "development_mean_excess": 0.00973731471426882,
+        "development_robust_floor": -0.0024139566700214204,
+        "release_eligible": false
+      }
+    ],
+    "no_reselection_after_validation": true
+  },
+  "verdicts": [
+    {
+      "pool": "csi300",
+      "candidate": "F5_P4",
+      "development_all_gates": false,
+      "external_checks": {
+        "mean": false,
+        "wins": false,
+        "cost": false,
+        "total_return": false,
+        "drop_best": false
+      },
+      "external_all_gates": false,
+      "recent_days": 9,
+      "prospective_30day_validation_complete": false,
+      "production_release": false
+    },
+    {
+      "pool": "csi500",
+      "candidate": "F1_Lasso",
+      "development_all_gates": false,
+      "external_checks": {
+        "mean": false,
+        "wins": false,
+        "cost": false,
+        "total_return": false,
+        "drop_best": false
+      },
+      "external_all_gates": false,
+      "recent_days": 9,
+      "prospective_30day_validation_complete": false,
+      "production_release": false
+    }
+  ]
+}

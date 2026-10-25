@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "suite_id": "market_only_v1",
+  "status": "designed_not_backtested",
+  "description": "预先固定的8组价量权重，用于之后批量研究，不修改生产默认权重。",
+  "factor_members": {
+    "momentum": ["ret_20", "ret_60", "volume_trend_20"],
+    "risk": ["volatility_value", "drawdown_value", "downside_volatility_value"],
+    "liquidity": ["turnover_value_20"]
+  },
+  "factor_policy": {
+    "member_aggregation": "equal_mean_of_cross_sectional_percentile_ranks",
+    "momentum_deduplication": "20/60日各保留一个收益排名，绝对收益和相对收益不重复使用。",
+    "since_924": "excluded_to_allow_validation_in_other_calendar_years",
+    "missing_values": "require_all_seven_members_finite_for_every_profile; no_profile_specific_reweighting",
+    "input_columns": "strict_allowlist_only; excluded_columns_never_reach_scorer"
+  },
+  "excluded_categories": {
+    "industry": "历史行业分类和行业龙头所需的历史市值口径不完整。",
+    "growth": "历史财报序列和公告时点版本不完整。",
+    "quality": "历史资产负债、现金流和报表版本不完整。",
+    "valuation": "主组连同财报估值及行业相对估值一起剔除。",
+    "theme": "主组限日线可重算因子；题材归档覆盖和强势股名单偏差单独研究。",
+    "capital": "主组限日线可重算因子；两融覆盖短、主力净额和龙虎榜覆盖不一致。"
+  },
+  "profiles": [
+    {
+      "id": "P0_price_weight_control",
+      "name": "原版价量权重归一",
+      "purpose": "将原配置的动量15、风控8、流动性5按28归一，作为受限因子组的基准。因子成员也统一为本组7项。",
+      "weights": {"momentum": 0.5357142857142857, "risk": 0.2857142857142857, "liquidity": 0.17857142857142858}
+    },
+    {
+      "id": "P1_balanced",
+      "name": "均衡",
+      "purpose": "动量和风险接近，保留少量流动性偏好。",
+      "weights": {"momentum": 0.45, "risk": 0.40, "liquidity": 0.15}
+    },
+    {
+      "id": "P2_momentum",
+      "name": "动量优先",
+      "purpose": "检验提高趋势方向权重的得失。",
+      "weights": {"momentum": 0.65, "risk": 0.25, "liquidity": 0.10}
+    },
+    {
+      "id": "P3_defensive",
+      "name": "风控优先",
+      "purpose": "检验偏低波动、较小回撤的排序能否改善下跌期表现。",
+      "weights": {"momentum": 0.30, "risk": 0.60, "liquidity": 0.10}
+    },
+    {
+      "id": "P4_equal_categories",
+      "name": "类别等权",
+      "purpose": "不预先偏重任何类别的透明对照。",
+      "weights": {"momentum": 0.3333333333333333, "risk": 0.3333333333333333, "liquidity": 0.3333333333333333}
+    },
+    {
+      "id": "P5_liquidity",
+      "name": "流动性优先",
+      "purpose": "检验成交额偏好在已通过流动性门槛的池内是否仍有作用。",
+      "weights": {"momentum": 0.40, "risk": 0.30, "liquidity": 0.30}
+    },
+    {
+      "id": "P6_momentum_only",
+      "name": "仅动量对照",
+      "purpose": "单独检验动量组，包含20/60日收益和量比。",
+      "weights": {"momentum": 1.0, "risk": 0.0, "liquidity": 0.0}
+    },
+    {
+      "id": "P7_risk_only",
+      "name": "仅风控对照",
+      "purpose": "单独检验风控组，仍遵守共同的量比和成交额入池门槛。",
+      "weights": {"momentum": 0.0, "risk": 1.0, "liquidity": 0.0}
+    }
+  ],
+  "batch_protocol": {
+    "window_trading_days": 30,
+    "holding_trading_days": 5,
+    "position_limit": 25,
+    "one_way_cost_bps": [0, 10, 20],
+    "executions": ["cycle_close_open", "continuous_net"],
+    "execution_comparison": "Compare profiles within the same pool and execution; report execution timing effects separately.",
+    "pool_groups": [
+      {"id": "original_low_position", "description": "原低位池：250日位置<=35%、距高点回落>=20%；共同门槛不变。"},
+      {"id": "broader_liquid", "description": "较宽池：仅取消上述两项低位限制；共同门槛不变。"}
+    ],
+    "shared_pool_rules": {
+      "history_days_min": 250,
+      "listed_days_min": 365,
+      "volume_trend_20_min": 1.1,
+      "turnover_value_20_min": 50000000,
+      "historical_isST": 0,
+      "historical_trade_status": 1
+    },
+    "benchmarks": ["same_pool_equal_same_cost", "market_equal_gross"],
+    "reported_metrics": ["net_return", "same_pool_net_excess", "market_gross_excess", "max_drawdown", "turnover", "fees", "unfilled_exits", "residual_positions"],
+    "primary_comparison": "同池、同成本、同执行方式下的超额收益，结合逐段胜率与最差回撤。",
+    "selection_policy": "固定8组，不在看到收益后追加小数权重搜索；全部试验结果和尝试次数公开。",
+    "existing_six_windows_role": "development_previously_viewed",
+    "new_validation_requirement": "正式筛选前增加未查看的时间段或新的按时间顺序验证；已查看的六段不能重新标为样本外。"
+  }
+}

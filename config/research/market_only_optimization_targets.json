@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "defined_on": "2026-10-14",
+  "status": "targets_defined_not_achieved",
+  "interpretation": "Research acceptance targets, not a forecast or promised investment return.",
+  "scope": "market-only reproducible factors; no unavailable point-in-time financial or industry data",
+  "baseline": {
+    "profile": "P4_equal_categories",
+    "pool": "broader_liquid",
+    "execution": "continuous_net",
+    "one_way_cost_bps": 10,
+    "window_trading_days": 30,
+    "cohort": "all_14_previously_viewed",
+    "source": "logs/index-benchmark-rerun-20261014/index_aggregate.csv",
+    "basis": "price_open_close",
+    "index_code": "000985",
+    "mean_strategy_return": 0.0407668383317387,
+    "mean_excess_index": -0.002868951404525962,
+    "mean_pool_excess_same_period": -0.0000008845471430953187,
+    "positive_excess_windows": 7,
+    "windows": 14,
+    "worst_strategy_return": -0.2026638593771123,
+    "worst_strategy_drawdown": -0.2149179276212521,
+    "zero_cost_mean_strategy_return": 0.05105487628349368,
+    "zero_cost_mean_excess_index": 0.007419086547229005
+  },
+  "first_round_development_targets": {
+    "mean_excess_index_min": 0.005,
+    "implied_mean_strategy_return_on_same_14_windows": 0.04863578973626466,
+    "implied_mean_return_improvement_on_same_14_windows": 0.007868951404525962,
+    "mean_pool_excess_same_period_min": 0.003,
+    "positive_excess_windows_min": 9,
+    "worst_strategy_return_min": -0.15,
+    "worst_strategy_drawdown_min": -0.15,
+    "20bps_mean_excess_index_min": 0.0,
+    "total_return_close_close_mean_excess_index_min": 0.0,
+    "all_required": true
+  },
+  "stretch_target": {
+    "mean_excess_index_min": 0.01,
+    "same_risk_and_validation_gates_required": true,
+    "selection_role": "secondary; do_not_increase_search_until_stretch_is_met"
+  },
+  "evaluation_policy": {
+    "primary_market_reference": "CSI All Share 000985; unchanged price-open-to-close timing",
+    "additional_indices": ["000300", "000905", "000852"],
+    "total_return_series": "H00985; strategy and index both first-day close to final-day close",
+    "pool_reference": "same eligible pool, schedule, execution, costs and risk-exposure policy; a shared new timing overlay must be applied to both sides and original full-investment references also retained",
+    "returns": "arithmetic mean of independent 30-trading-day windows; no annualization or stitching",
+    "transaction_costs": [0, 10, 20],
+    "risk": "no leverage; marked residual holdings remain in NAV; risk thresholds are acceptance tests, not guaranteed stop-loss caps",
+    "changed_rules": "report independently; freeze a limited candidate suite before examining its returns",
+    "development_only": "all existing 14 windows are viewed; passing them does not establish out-of-sample success",
+    "out_of_sample": "freeze chosen rules before unseen chronological or forward paper validation; report the same metrics without fitting validation data",
+    "validation_window_minimum_for_preliminary_acceptance": 6,
+    "validation_success_fraction_min": 0.6,
+    "validation_metric_targets": "same +0.5pp mean index excess, +0.3pp same-pool excess, -15% return/drawdown floors, 20bps and aligned total-return nonnegative gates; absolute strategy mean return is not fixed to the old market period",
+    "validation_strength": "Six disjoint windows provide a preliminary gate only; require longer monitoring and data quality audit before production replacement.",
+    "failure_policy": "report unmet targets; do not relabel viewed windows or relax thresholds retrospectively"
+  }
+}

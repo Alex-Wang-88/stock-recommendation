@@ -1,0 +1,98 @@
+{
+  "snapshot_generated_at": "2026-10-19T09:40:24+00:00",
+  "scope": "Source validation, numerical tests and minimal-document render/event tests; no real browser layout verification.",
+  "source_count": 11,
+  "sources": [
+    {
+      "id": "ndx",
+      "status": "ok",
+      "source_date": "2026-10-16",
+      "rows": 1255,
+      "fetched_at": "2026-10-19T09:39:09+00:00"
+    },
+    {
+      "id": "kospi",
+      "status": "ok",
+      "source_date": "2026-10-19",
+      "rows": 1221,
+      "fetched_at": "2026-10-19T09:39:11+00:00"
+    },
+    {
+      "id": "cny",
+      "status": "ok",
+      "source_date": "2026-10-16",
+      "rows": 630,
+      "fetched_at": "2026-10-19T09:40:25+00:00"
+    },
+    {
+      "id": "gold",
+      "status": "ok",
+      "source_date": "2026-10-16",
+      "rows": 1257,
+      "fetched_at": "2026-10-19T09:39:14+00:00"
+    },
+    {
+      "id": "brent",
+      "status": "ok",
+      "source_date": "2026-10-16",
+      "rows": 1257,
+      "fetched_at": "2026-10-19T09:39:15+00:00"
+    },
+    {
+      "id": "ust10y",
+      "status": "ok",
+      "source_date": "2026-10-16",
+      "rows": 698,
+      "fetched_at": "2026-10-19T09:39:20+00:00"
+    },
+    {
+      "id": "semi",
+      "status": "ok",
+      "source_date": "2026-10-19",
+      "rows": 650,
+      "fetched_at": "2026-10-19T09:39:20+00:00"
+    },
+    {
+      "id": "metals",
+      "status": "ok",
+      "source_date": "2026-10-19",
+      "rows": 650,
+      "fetched_at": "2026-10-19T09:39:20+00:00"
+    },
+    {
+      "id": "energy",
+      "status": "ok",
+      "source_date": "2026-10-19",
+      "rows": 650,
+      "fetched_at": "2026-10-19T09:39:20+00:00"
+    },
+    {
+      "id": "newenergy",
+      "status": "ok",
+      "source_date": "2026-10-19",
+      "rows": 650,
+      "fetched_at": "2026-10-19T09:39:21+00:00"
+    },
+    {
+      "id": "consumer",
+      "status": "ok",
+      "source_date": "2026-10-19",
+      "rows": 650,
+      "fetched_at": "2026-10-19T09:39:21+00:00"
+    }
+  ],
+  "basket_date": "2026-10-19",
+  "python_tests_passed": 12,
+  "node_tests_passed": 4,
+  "ruff": "passed",
+  "package_copy_verification": "all five complexity assets byte-identical",
+  "warnings": [],
+  "sha256": {
+    "site\\complexity.html": "8801a22637048dd0c5958374cfc8af4e4c85debae1795e562133bd0d8b562067",
+    "site\\complexity.js": "6de2ce54c298476d9c26f75ad8b2d8bb0fa3c7325b5f004e86b20eada09719a2",
+    "site\\complexity.css": "ce2ed397a2ccfa5b56e978fc17023a26b9b1bb1c604f460ed0595d476d55954d",
+    "site\\complexity-data.json": "8c3dfce54aadd1384b152bff86f674aef2d205289ec9249ea53c0f0d3b415734",
+    "site\\complexity-data.js": "0d1f9265216bc135f5dfe7696b385eeda3d2d1a47ccd806c025dddb25afd365d"
+  },
+  "remote_deployment": "not performed"
+}

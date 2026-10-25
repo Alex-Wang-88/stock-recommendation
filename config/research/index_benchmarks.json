@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "scope": "benchmark_extension_of_14_previously_viewed_windows_and_8_frozen_profiles",
+  "primary_market_reference": "000985",
+  "source": "https://www.csindex.com.cn/csindex-home/perf/index-perf",
+  "indices": [
+    {"price_code": "000300", "total_return_code": "H00300", "name": "沪深300"},
+    {"price_code": "000905", "total_return_code": "H00905", "name": "中证500"},
+    {"price_code": "000852", "total_return_code": "H00852", "name": "中证1000"},
+    {"price_code": "000985", "total_return_code": "H00985", "name": "中证全指"}
+  ],
+  "price_comparison": {
+    "timing": "first_window_day_actual_index_open_to_last_window_day_index_close",
+    "strategy_timing": "original_30_trading_day_net_account_return",
+    "index_execution": "buy_and_hold_across_entire_window_including_overnights",
+    "index_cost_bps": 0,
+    "dividends": "excluded_by_price_index_definition"
+  },
+  "total_return_comparison": {
+    "timing": "first_window_day_index_close_to_last_window_day_index_close_29_close_intervals",
+    "strategy_timing": "last_account_close_nav_divided_by_first_account_close_nav_minus_one",
+    "reason": "Official total-return histories publish close only; no synthetic open is inferred.",
+    "index_cost_bps": 0,
+    "dividends": "gross_dividend_reinvestment_in_official_total_return_series",
+    "strategy_costs": "fees incurred after first close remain included; first-day entry fees lie before this comparison period"
+  },
+  "excess": "arithmetic_strategy_return_minus_index_return; relative_wealth_return_also_saved",
+  "pool_comparison": "retain_previous_same_pool_equal_same_cost",
+  "selection_policy": "all_four_indices_reported; no_index_chosen_from_observed_strategy_returns",
+  "weight_policy": "do_not_change_market_only_weights_or_production_default",
+  "calendar_policy": "all_14_windows_now_previously_viewed; original_cohort_labels_retained_for_audit_only"
+}

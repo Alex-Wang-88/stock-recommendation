@@ -1,0 +1,340 @@
+{
+  "scope": "Local source and minimal-document-stub execution; no rendered browser, real DOM, layout, or provider account test.",
+  "sha256": {
+    "html": "5f7573f63d4d873efcb164905b49e6602f255919f0ad4dc2a50f9d07a138cecb",
+    "js": "792b7bdad32610823ba034c6e3298e38f91cb465817e3f6ad9cd6cf78666b5ef",
+    "css": "04d0294355a4585ebbca35193123442c499127c110a920615778ba58b6e573ea"
+  },
+  "externalDataApiCallsInPageScript": false,
+  "demoDisclosure": true,
+  "windows": [
+    {
+      "days": 60,
+      "activeButtons": [
+        "60"
+      ],
+      "readouts": {
+        "density": "0.34",
+        "average": "0.27",
+        "strongest": "黄金 → 有色",
+        "strongest-value": "关联强度 0.41",
+        "stable": "6 / 12"
+      },
+      "edgeMaximum": [
+        "us-electronics",
+        0.42
+      ],
+      "mismatches": [
+        {
+          "edge": "kr-consumer",
+          "cell": "consumer-kr",
+          "network": -0.12,
+          "heatmap": 0.12
+        },
+        {
+          "edge": "fx-consumer",
+          "cell": "consumer-fx",
+          "network": 0.09,
+          "heatmap": -0.09
+        }
+      ],
+      "cellClassesDifferentFromInitial": [
+        {
+          "key": "metals-kr",
+          "value": "+0.09",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        },
+        {
+          "key": "metals-rates",
+          "value": "+0.05",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        },
+        {
+          "key": "energy-us",
+          "value": "−0.05",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        },
+        {
+          "key": "energy-kr",
+          "value": "+0.03",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        },
+        {
+          "key": "consumer-us",
+          "value": "+0.07",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        },
+        {
+          "key": "consumer-fx",
+          "value": "−0.09",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        }
+      ],
+      "uniqueEdgeCount": 12,
+      "unchangedSeriesPaths": true
+    },
+    {
+      "days": 20,
+      "activeButtons": [
+        "20"
+      ],
+      "readouts": {
+        "density": "0.41",
+        "average": "0.31",
+        "strongest": "美股 → 电子",
+        "strongest-value": "关联强度 0.47",
+        "stable": "4 / 12"
+      },
+      "edgeMaximum": [
+        "us-electronics",
+        0.47
+      ],
+      "mismatches": [
+        {
+          "edge": "us-newenergy",
+          "cell": "newenergy-us",
+          "network": 0.24,
+          "heatmap": 0.21
+        },
+        {
+          "edge": "kr-consumer",
+          "cell": "consumer-kr",
+          "network": -0.17,
+          "heatmap": 0.17
+        },
+        {
+          "edge": "fx-consumer",
+          "cell": "consumer-fx",
+          "network": 0.12,
+          "heatmap": -0.12
+        }
+      ],
+      "cellClassesDifferentFromInitial": [
+        {
+          "key": "metals-rates",
+          "value": "+0.03",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        },
+        {
+          "key": "energy-us",
+          "value": "−0.08",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        },
+        {
+          "key": "energy-kr",
+          "value": "+0.09",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        },
+        {
+          "key": "consumer-us",
+          "value": "+0.04",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        }
+      ],
+      "uniqueEdgeCount": 12,
+      "unchangedSeriesPaths": true
+    },
+    {
+      "days": 120,
+      "activeButtons": [
+        "120"
+      ],
+      "readouts": {
+        "density": "0.29",
+        "average": "0.23",
+        "strongest": "美债 → 新能源",
+        "strongest-value": "关联强度 0.34",
+        "stable": "8 / 12"
+      },
+      "edgeMaximum": [
+        "rates-newenergy",
+        -0.34
+      ],
+      "mismatches": [
+        {
+          "edge": "us-electronics",
+          "cell": "electronics-us",
+          "network": 0.31,
+          "heatmap": 0.35
+        },
+        {
+          "edge": "us-newenergy",
+          "cell": "newenergy-us",
+          "network": 0.15,
+          "heatmap": 0.12
+        },
+        {
+          "edge": "kr-consumer",
+          "cell": "consumer-kr",
+          "network": -0.08,
+          "heatmap": 0.08
+        },
+        {
+          "edge": "fx-consumer",
+          "cell": "consumer-fx",
+          "network": 0.04,
+          "heatmap": -0.04
+        }
+      ],
+      "cellClassesDifferentFromInitial": [
+        {
+          "key": "metals-rates",
+          "value": "+0.09",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        },
+        {
+          "key": "energy-us",
+          "value": "+0.02",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        },
+        {
+          "key": "energy-kr",
+          "value": "+0.06",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        },
+        {
+          "key": "consumer-kr",
+          "value": "+0.08",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        },
+        {
+          "key": "consumer-fx",
+          "value": "−0.04",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        }
+      ],
+      "uniqueEdgeCount": 12,
+      "unchangedSeriesPaths": true
+    },
+    {
+      "days": 60,
+      "activeButtons": [
+        "60"
+      ],
+      "readouts": {
+        "density": "0.34",
+        "average": "0.27",
+        "strongest": "黄金 → 有色",
+        "strongest-value": "关联强度 0.41",
+        "stable": "6 / 12"
+      },
+      "edgeMaximum": [
+        "us-electronics",
+        0.42
+      ],
+      "mismatches": [
+        {
+          "edge": "kr-consumer",
+          "cell": "consumer-kr",
+          "network": -0.12,
+          "heatmap": 0.12
+        },
+        {
+          "edge": "fx-consumer",
+          "cell": "consumer-fx",
+          "network": 0.09,
+          "heatmap": -0.09
+        }
+      ],
+      "cellClassesDifferentFromInitial": [
+        {
+          "key": "metals-kr",
+          "value": "+0.09",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        },
+        {
+          "key": "metals-rates",
+          "value": "+0.05",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        },
+        {
+          "key": "energy-us",
+          "value": "−0.05",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        },
+        {
+          "key": "energy-kr",
+          "value": "+0.03",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        },
+        {
+          "key": "consumer-us",
+          "value": "+0.07",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        },
+        {
+          "key": "consumer-fx",
+          "value": "−0.09",
+          "classes": [
+            "cx-heat-neutral"
+          ]
+        }
+      ],
+      "uniqueEdgeCount": 12,
+      "unchangedSeriesPaths": true
+    }
+  ],
+  "chart": [
+    {
+      "key": "breadth",
+      "plottedVertices": 23,
+      "lastY": 180,
+      "lastValueOnShown0to100Axis": 27.5
+    },
+    {
+      "key": "dispersion",
+      "plottedVertices": 23,
+      "lastY": 87,
+      "lastValueOnShown0to100Axis": 74
+    },
+    {
+      "key": "coupling",
+      "plottedVertices": 23,
+      "lastY": 132,
+      "lastValueOnShown0to100Axis": 51.5
+    }
+  ],
+  "ratesEdgePath": "M466 215 C558 215 611 215 700 215",
+  "ratesNode": "translate(350 279)",
+  "smallFontDeclarations": 45
+}

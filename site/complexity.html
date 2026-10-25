@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="description" content="面向普通股民的跨市场观察：用通俗解读看海外涨跌、五个A股方向的强弱和历史联系，可展开专业数据与来源。" />
+  <title>跨市场复杂性观察 · 市场观察</title>
+  <link rel="stylesheet" href="./complexity.css" />
+  <script src="./complexity-data.js" defer></script>
+  <script src="./complexity.js" defer></script>
+</head>
+<body class="cx-page">
+  <a class="cx-skip-link" href="#main-content">跳到主要内容</a>
+  <header class="cx-topbar">
+    <a class="cx-brand" href="./complexity.html"><strong>市场观察</strong><small>跨市场复杂系统</small></a>
+    <nav class="cx-nav" aria-label="页面导航"><a href="./index.html">每日候选</a><a href="./complexity.html" aria-current="page">复杂性看板</a><a href="#sources-title">数据来源</a></nav>
+  </header>
+  <main id="main-content" class="cx-shell">
+    <section class="cx-hero" aria-labelledby="page-title">
+      <div><p class="cx-eyebrow">看行情 · 读变化 · 查依据</p><h1 id="page-title">跨市场观察</h1><p class="cx-hero-description">先看海外发生了什么，再看几个A股方向的强弱，最后了解它们过去是否常有联系。数字旁边都有读法，不需要先懂统计。</p></div>
+      <div class="cx-build-state"><strong id="cx-build-state">等待数据快照</strong><small id="cx-generated">读取本地快照中</small></div>
+    </section>
+    <aside class="cx-banner" role="note"><strong>先知道范围</strong> · 这里看的是每天更新的数据；A股只选了五只行业/主题ETF作为观察样本。读图时请看清日期：这些结果描述已发生的变化，不能当作下一天必涨或必跌的判断。</aside>
+    <p id="cx-message" class="cx-message" role="status" aria-live="polite">正在读取数据；未生成快照时明确显示缺失。</p>
+    <noscript><p class="cx-message">需要启用 JavaScript。也可直接打开 <a href="./complexity-data.json">数据 JSON</a>。</p></noscript>
+
+    <div class="cx-reading-toolbar"><div class="cx-view-control" role="group" aria-label="阅读方式"><button type="button" data-view="plain" aria-pressed="true" disabled>通俗解读</button><button type="button" data-view="expert" aria-pressed="false" disabled>展开专业明细</button></div><p id="cx-reading-hint" role="status" aria-live="polite">默认先看文字解读；需要核对数字时，随时展开明细。</p></div>
+    <section class="cx-section" aria-labelledby="overview-title"><div class="cx-section-heading"><div><p class="cx-eyebrow">先读这里</p><h2 id="overview-title">这期数据，先看三件事</h2><p id="cx-overview-date">等待快照日期</p></div></div><div id="cx-overview" class="cx-overview-grid"></div><details class="cx-guide"><summary>第一次看？按这个顺序就能读懂</summary><ol><li><strong>看日期：</strong>海外和A股的交易时间不同，各卡片的日期可能不同。</li><li><strong>看强弱：</strong>站上平均价的样本多不多、几个方向的涨跌差别大不大。</li><li><strong>看联系：</strong>下方只描述过去的关系。选20、60、120个交易日，解读会跟着变化。</li></ol><p>ETF可理解为一篮子证券的交易产品。这里用五只ETF观察五个方向，样本范围见下方，不能概括所有A股。</p></details></section>
+
+    <section class="cx-section" aria-labelledby="pulse-title">
+      <div class="cx-section-heading"><div><p class="cx-eyebrow">第一步 · 看海外</p><h2 id="pulse-title">海外最近是涨是跌？</h2><p>先看每张卡上的涨跌和日期，再看“怎么读”。人民币汇率与国债收益率的读法另有说明。</p></div><a href="./complexity-data.json" download>下载原始快照 JSON</a></div>
+      <div id="cx-pulses" class="cx-pulse-grid" aria-label="外部市场快照"></div>
+    </section>
+    <section class="cx-section" aria-labelledby="state-title">
+      <div class="cx-section-heading"><div><p class="cx-eyebrow">第二步 · 看几个A股方向</p><h2 id="state-title">强弱、分化和成交，怎么理解？</h2><p>观察半导体、有色、能源、新能源、主要消费这五只ETF。每张卡先说人话，“这是什么意思”里保留原来的指标与公式。</p><details><summary>看的是哪五只ETF？</summary><p>半导体 512480 · 有色 512400 · 能源 159945 · 新能源 516160 · 消费 159928。统一按共同交易日计算，采用未复权价格，除息、跟踪误差与主题重叠都可能影响观察；它们不代表A股全市场。</p></details></div><span id="cx-basket-date" class="cx-mini-label">日期待定</span></div>
+      <div id="cx-metrics" class="cx-metric-grid"></div>
+    </section>
+    <section class="cx-section" aria-labelledby="network-title">
+      <div class="cx-section-heading"><div><p class="cx-eyebrow">第三步 · 看过去的联系</p><h2 id="network-title">海外变化，过去和哪些方向有关？</h2><p>把海外较早时段的变化，与这些ETF之后的涨跌作比较。按钮表示回看多少个交易日，文字解读、关系图和历史图一起更新。</p></div><div class="cx-window-control" role="group" aria-label="关联估计与历史展示窗口"><button type="button" data-window="20" aria-pressed="false" disabled>20日</button><button type="button" data-window="60" aria-pressed="true" disabled>60日</button><button type="button" data-window="120" aria-pressed="false" disabled>120日</button></div></div>
+      <p id="cx-window-range" class="cx-section-copy" aria-live="polite"></p>
+      <div id="cx-link-summary" class="cx-link-summary" aria-live="polite"></div><p class="cx-reading-note">“同向”是历史变化方向偏一致，“反向”是偏相反。比如系数 +0.40 只是关系读数，<strong>不等于40%的上涨概率</strong>。本页没有检验这些关系能否带来投资收益。</p>
+      <details data-expert class="cx-expert-block"><summary>展开专业关系图、相关系数与样本明细</summary>
+      <div class="cx-network-layout">
+        <article class="cx-panel">
+          <div class="cx-legend"><span class="cx-key-positive">实线：正相关</span><span class="cx-key-negative">虚线：负相关</span><span>仅画 |ρ| ≥ 0.30；线宽表示 |ρ|</span></div>
+          <p class="cx-scroll-hint">窄屏可横向滚动网络与数据表；精确数值见下方表格。</p>
+          <div class="cx-network-canvas"><svg id="cx-network" viewBox="0 0 900 440" role="img" aria-labelledby="cx-network-title cx-network-desc"><title id="cx-network-title">外部因素与五只ETF的日期滞后关联</title><desc id="cx-network-desc">完整数值、样本数与区间见后续表格。</desc></svg></div>
+          <p class="cx-chart-note">左侧为外部因素，右侧为ETF。连线不表示因果；未剔除共同市场因子，未做多重比较校正。</p>
+        </article>
+        <aside class="cx-panel" aria-labelledby="readout-title"><h3 id="readout-title">网络观测</h3><dl id="cx-readouts" class="cx-readout-list"></dl><p class="cx-chart-note">密度分母只包含样本足够、两端有波动的有效关系；缺失不当作零相关。区间为 Fisher 近似描述。</p></aside>
+      </div>
+      <article class="cx-panel cx-heat-full">
+        <div class="cx-section-heading"><div><h3>全部关系系数</h3><p>每格显示 Pearson ρ 与有效 n；展开明细查看近似95%区间。缺失显示“—”。</p></div><button id="cx-export-correlations" type="button" class="cx-action" disabled>下载关系 CSV</button></div>
+        <div class="cx-table-scroll"><table id="cx-heatmap" class="cx-heatmap"><caption>外部因素与A股代理ETF日期滞后相关系数</caption></table></div>
+        <p class="cx-chart-note">+ / − 为方向；|ρ| &lt; 0.10 为中性色。颜色不代表统计显著性。</p>
+        <details><summary>查看样本数与近似95%区间</summary><div class="cx-table-scroll"><table id="cx-interval-table"></table></div></details>
+      </article>
+      </details>
+    </section>
+    <section class="cx-section" aria-labelledby="timeline-title">
+      <article class="cx-panel"><div class="cx-section-heading"><div><p class="cx-eyebrow">再看一眼 · 变化过程</p><h2 id="timeline-title">这些变化，是刚发生还是持续了一阵？</h2><p id="cx-chart-help">切换右侧指标，可以看到不同的读图说明。</p></div><label class="cx-select-label" for="cx-series">想看什么？<select id="cx-series"><option value="breadth">站上平均价的样本多不多（%）</option><option value="dispersion">几个方向的涨跌差别（百分点）</option><option value="hhi">成交是否集中（HHI，0–1）</option><option value="synchrony">历史走势联系的多少（0–1）</option></select></label></div>
+        <p id="cx-chart-caption" class="cx-chart-note"></p><p class="cx-scroll-hint">窄屏可横向滚动图表；也可展开原始数值表或下载 CSV。</p><div class="cx-chart-scroll"><svg id="cx-history-chart" viewBox="0 0 900 280" role="img" aria-labelledby="cx-chart-title"><title id="cx-chart-title">篮子指标历史；精确读数见下表</title></svg></div>
+        <div class="cx-section-heading"><details class="cx-history-details"><summary>查看日期与原始数值</summary><div class="cx-table-scroll"><table id="cx-history-table"></table></div></details><button id="cx-export-history" type="button" class="cx-action" disabled>下载历史 CSV</button></div>
+      </article>
+    </section>
+    <section class="cx-section" aria-labelledby="glossary-title"><article class="cx-panel cx-glossary"><h2 id="glossary-title">遇到术语，看这张小词典</h2><dl><dt>20日均线</dt><dd>最近20个交易日的平均收盘价。站在线上只说明当前价格高于这段时间的均价。</dd><dt>收益分化 / 离散度</dt><dd>这几个方向的涨跌差得有多大。数值小，也可能是一起跌，不能直接理解成行情更好。</dd><dt>成交集中度 / HHI</dt><dd>成交是不是挤在少数几只ETF上。成交额包含买卖双方的交易，不能直接叫“资金净流入”。</dd><dt>相关系数</dt><dd>−1到+1之间的历史关系读数。正数偏同向，负数偏反向，接近0表示本方法看到的方向联系较弱；它不是胜率。</dd><dt>历史百分位</dt><dd>和过去相比排在什么位置。第70百分位大致是高于过去七成的读数，不能读成“七成概率上涨”。</dd><dt>基点 / bp 与百分点</dt><dd>1个基点 = 0.01个百分点。例如收益率从4.00%到4.01%，是上升1个基点；比例从40%到60%，是增加20个百分点。</dd></dl></article></section>
+    <section class="cx-section" aria-labelledby="sources-title"><div class="cx-section-heading"><div><p class="cx-eyebrow">想核对时再展开</p><h2 id="sources-title">数据从哪里来，更新到哪天？</h2><p>卡片已标出数据日期；这里可核对每一条来源。接口失败时使用已标记的旧快照，没有有效数据就留空。</p></div></div><details data-expert class="cx-expert-block"><summary>展开全部来源、日期与运行状态</summary><div class="cx-panel"><div class="cx-table-scroll"><table id="cx-sources"><caption>每个系列的来源记录</caption></table></div><p class="cx-chart-note">腾讯财经与 Yahoo Finance 为公开页面行情端点，未提供本项目的稳定性或再分发授权证明；ECB参考汇率经 Frankfurter 获取，美国国债日值来自财政部。公开可访问不等于已获任意再分发许可，部署范围需遵守各来源条款。</p></div></details></section>
+    <section class="cx-section" aria-labelledby="method-title"><h2 id="method-title">想知道数字怎么算？</h2><details data-expert class="cx-expert-block"><summary>展开公式、计算口径与限制</summary><article class="cx-panel cx-method"><dl>
+      <dt>价格与变化</dt><dd>ETF统一使用腾讯未复权日线，价格收益 = 今日收盘 / 前一有效收盘 − 1；不包含现金分红再投资，除息可能造成价格缺口。成交额由万元换算为元。指数和期货使用源收盘价；10年期收益率采用财政部平价收益率，变化 = 两日差 × 100 bp。</dd>
+      <dt>篮子广度</dt><dd>五只ETF中，收盘价严格高于含当日的20个共同交易日收盘均值的数量 / 5。不是上涨股票家数，也不是全市场广度。缺少任一ETF时不计算整篮子状态。</dd>
+      <dt>分化与集中</dt><dd>分化为五只ETF日收益的总体标准差（百分点）；HHI = 各ETF成交额份额平方和，五只等额时为0.20。它衡量所选ETF的交易集中，不是全行业资金集中。历史百分位采用此前最多252个有效观测的中秩，少于60个不显示分位。</dd>
+      <dt>行业代理同步性</dt><dd>五只ETF两两日收益的60日 Pearson 相关，|ρ| ≥ 0.30 的有效边数 / 有效配对数。最多10对，最小样本20；与跨市场网络密度分别计算。</dd>
+      <dt>跨市场日期对齐</dt><dd>对每个A股日期，取严格早于该日的最新外部日值，再在A股日期网格上计算变化。外部休市不会重复计入同一日收益；超过7天的旧值不配对。该规则只做日期滞后，接口未提供逐历史发布时间，不能视为无前视偏差的点时回测。</dd>
+      <dt>网络、区间与样本</dt><dd>窗口为最近20/60/120个共同ETF交易日，相关使用其中可配对的有效样本，少于20或零方差时留空。网络与热力表使用同一份有符号系数；最强关系按 |ρ| 排序。95%区间采用 Fisher 变换近似，未校正时间相关与多重比较。</dd>
+      <dt>标的范围</dt><dd>USD/CNY是每日参考汇率，不是USD/CNH；GC=F与BZ=F为供应商近月期货序列，存在换月影响，不是黄金或原油现货。ETF是行业/主题代理，可能重叠，不等同于行业指数。</dd>
+      <dt>完整日截断</dt><dd>A股当日值在中国时间15:30后纳入；纳指与韩国指数在源时区收盘缓冲后纳入。期货等到源时区跨日，ECB和国债取前日及更早的源日期，可能比供应商当前最新值更旧。</dd>
+    </dl></article></details></section>
+  </main>
+  <footer class="cx-footer"><span>公开日频快照 · 描述统计</span><a href="./index.html">返回每日候选</a><a href="https://github.com/Alex-Wang-88/stock-recommendation" target="_blank" rel="noreferrer">项目仓库</a></footer>
+</body>
+</html>

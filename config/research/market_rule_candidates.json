@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "defined_on": "2026-10-14",
+  "scope": "12 predeclared market-only rule variants; all development returns disclosed",
+  "common": {"history_days_min": 250, "listed_days_min": 365, "turnover_value_20_min": 50000000, "historical_isST": 0, "historical_trade_status": 1, "window_days": 30, "cost_bps": [0, 10, 20], "execution": "continuous_net", "index": "000985", "max_inverse_vol_weight": 0.04},
+  "scorers": {
+    "P4": "unchanged production percentile scorer using frozen P4_equal_categories weights",
+    "risk_liquidity": "0.5 * mean(percentile ranks of the three frozen risk members) + 0.5 * turnover percentile; all seven common factors must remain finite"
+  },
+  "candidates": [
+    {"id": "O00", "name": "原类别等权基线", "rebalance_days": 5, "positions": 25, "retain_rank": 25, "volume_min": 1.1, "weighting": "equal", "market_vol_target": null, "scorer": "P4"},
+    {"id": "O01", "name": "10日调仓", "rebalance_days": 10, "positions": 25, "retain_rank": 25, "volume_min": 1.1, "weighting": "equal", "market_vol_target": null, "scorer": "P4"},
+    {"id": "O02", "name": "20日调仓", "rebalance_days": 20, "positions": 25, "retain_rank": 25, "volume_min": 1.1, "weighting": "equal", "market_vol_target": null, "scorer": "P4"},
+    {"id": "O03", "name": "5日调仓+排名缓冲40", "rebalance_days": 5, "positions": 25, "retain_rank": 40, "volume_min": 1.1, "weighting": "equal", "market_vol_target": null, "scorer": "P4"},
+    {"id": "O04", "name": "10日调仓+排名缓冲40", "rebalance_days": 10, "positions": 25, "retain_rank": 40, "volume_min": 1.1, "weighting": "equal", "market_vol_target": null, "scorer": "P4"},
+    {"id": "O05", "name": "50只+10日调仓+缓冲75", "rebalance_days": 10, "positions": 50, "retain_rank": 75, "volume_min": 1.1, "weighting": "equal", "market_vol_target": null, "scorer": "P4"},
+    {"id": "O06", "name": "50只+波动率倒数分配", "rebalance_days": 10, "positions": 50, "retain_rank": 75, "volume_min": 1.1, "weighting": "inverse_vol", "market_vol_target": null, "scorer": "P4"},
+    {"id": "O07", "name": "50只+取消放量门槛", "rebalance_days": 10, "positions": 50, "retain_rank": 75, "volume_min": 0.0, "weighting": "equal", "market_vol_target": null, "scorer": "P4"},
+    {"id": "O08", "name": "取消放量门槛+波动率分配", "rebalance_days": 10, "positions": 50, "retain_rank": 75, "volume_min": 0.0, "weighting": "inverse_vol", "market_vol_target": null, "scorer": "P4"},
+    {"id": "O09", "name": "50只+市场波动15%仓位控制", "rebalance_days": 10, "positions": 50, "retain_rank": 75, "volume_min": 1.1, "weighting": "equal", "market_vol_target": 0.15, "scorer": "P4"},
+    {"id": "O10", "name": "取消放量门槛+风控流动性排序", "rebalance_days": 10, "positions": 50, "retain_rank": 75, "volume_min": 0.0, "weighting": "equal", "market_vol_target": null, "scorer": "risk_liquidity"},
+    {"id": "O11", "name": "风控流动性+波动率分配+15%仓位控制", "rebalance_days": 10, "positions": 50, "retain_rank": 75, "volume_min": 0.0, "weighting": "inverse_vol", "market_vol_target": 0.15, "scorer": "risk_liquidity"}
+  ],
+  "selection": {
+    "primary": "candidates passing every frozen development gate, ordered by mean index excess at 10bps, then same-pool excess, then lower traded notional",
+    "fallback": "if none pass, candidates satisfying both -15% loss/drawdown gates ordered as primary; if none satisfy risk gates, lowest worst drawdown, then mean index excess",
+    "finalist_count": 1,
+    "holdout": "test only frozen finalist plus O00 baseline; do not select among candidates on holdout",
+    "attempts": "exactly these 12 variants; factor diagnostic is not used to introduce further trial weights"
+  },
+  "timing": "all scores, vol weights and market-volatility exposure use previous-close information; order execution uses the scheduled open; final exits use last close",
+  "market_exposure": "min(1, annual_vol_target / previous_close_20day_CSI_All_Share_price_return_population_volatility / sqrt(252)); no leverage; apply same rule to pool control",
+  "buffer": "retain actual holdings still eligible and within retain_rank, in rank order; fill remaining slots by rank; blocked inventory remains in NAV and occupies slots",
+  "reference_policy": "same-pool equal portfolio with same calendar, costs and market exposure; full-investment equal reference retained; inverse-vol pool reference additionally reported for inverse-vol candidates"
+}

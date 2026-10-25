@@ -1,0 +1,460 @@
+{
+  "schema_version": 2,
+  "defined_on": "2026-10-15",
+  "expected_candidates": 24,
+  "scope": "second finite adaptive research round: 21 new rules plus 3 controls",
+  "common": {
+    "history_days_min": 250,
+    "listed_days_min": 365,
+    "turnover_value_20_min": 50000000,
+    "historical_isST": 0,
+    "historical_trade_status": 1,
+    "window_days": 30,
+    "cost_bps": [
+      0,
+      10,
+      20
+    ],
+    "execution": "continuous_net",
+    "index": "000985",
+    "max_inverse_vol_weight": 0.04
+  },
+  "additional_factors": [
+    "ret_5",
+    "ret_10",
+    "ret_60_skip5"
+  ],
+  "scorer_definitions": {
+    "trend5": "pct_rank(ret_5)",
+    "reverse5": "pct_rank(-ret_5)",
+    "reverse10": "pct_rank(-ret_10)",
+    "reverse20": "pct_rank(-ret_20)",
+    "trend60": "pct_rank(ret_60)",
+    "trend60_skip5": "pct_rank(close[t-5]/close[t-60]-1)",
+    "trend_pullback": ".5*rank(ret_60_skip5)+.3*rank(-ret_5)+.2*mean(three risk ranks)",
+    "reverse_risk": ".5*rank(-ret_5)+.3*mean(three risk ranks)+.2*rank(turnover_value_20)",
+    "dual_reverse": ".5*rank(-ret_5)+.5*rank(-ret_20)",
+    "regime_switch": "trend_pullback if CSI All Share previous-close level > previous-close MA60; otherwise reverse_risk",
+    "P4": "unchanged original market-only P4 scorer"
+  },
+  "candidates": [
+    {
+      "id": "C00",
+      "name": "原类别等权基线",
+      "rebalance_days": 5,
+      "positions": 25,
+      "retain_rank": 25,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": null,
+      "scorer": "P4",
+      "previous_id": "O00",
+      "family": "control"
+    },
+    {
+      "id": "C01",
+      "name": "10日调仓+排名缓冲40",
+      "rebalance_days": 10,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": null,
+      "scorer": "P4",
+      "previous_id": "O04",
+      "family": "control"
+    },
+    {
+      "id": "C02",
+      "name": "50只+市场波动15%仓位控制",
+      "rebalance_days": 10,
+      "positions": 50,
+      "retain_rank": 75,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": 0.15,
+      "scorer": "P4",
+      "previous_id": "O09",
+      "family": "control"
+    },
+    {
+      "id": "R01",
+      "name": "5日追涨对照",
+      "family": "trend5",
+      "scorer": "trend5",
+      "rebalance_days": 5,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": null
+    },
+    {
+      "id": "R02",
+      "name": "5日反转/5日调仓",
+      "family": "reverse5",
+      "scorer": "reverse5",
+      "rebalance_days": 5,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": null
+    },
+    {
+      "id": "R03",
+      "name": "5日反转/10日调仓",
+      "family": "reverse5",
+      "scorer": "reverse5",
+      "rebalance_days": 10,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": null
+    },
+    {
+      "id": "R04",
+      "name": "10日反转/10日调仓",
+      "family": "reverse10",
+      "scorer": "reverse10",
+      "rebalance_days": 10,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": null
+    },
+    {
+      "id": "R05",
+      "name": "20日反转/10日调仓",
+      "family": "reverse20",
+      "scorer": "reverse20",
+      "rebalance_days": 10,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": null
+    },
+    {
+      "id": "R06",
+      "name": "中期趋势剔除最近5日",
+      "family": "trend60_skip5",
+      "scorer": "trend60_skip5",
+      "rebalance_days": 10,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": null
+    },
+    {
+      "id": "R07",
+      "name": "中期趋势+短期回撤",
+      "family": "trend_pullback",
+      "scorer": "trend_pullback",
+      "rebalance_days": 10,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": null
+    },
+    {
+      "id": "R08",
+      "name": "短期反转+风控流动性",
+      "family": "reverse_risk",
+      "scorer": "reverse_risk",
+      "rebalance_days": 10,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": null
+    },
+    {
+      "id": "R09",
+      "name": "5日及20日双反转",
+      "family": "dual_reverse",
+      "scorer": "dual_reverse",
+      "rebalance_days": 10,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": null
+    },
+    {
+      "id": "R10",
+      "name": "过去均线状态切换",
+      "family": "regime_switch",
+      "scorer": "regime_switch",
+      "rebalance_days": 10,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": null
+    },
+    {
+      "id": "R11",
+      "name": "反转风控/50只等权",
+      "family": "reverse_risk",
+      "scorer": "reverse_risk",
+      "rebalance_days": 10,
+      "positions": 50,
+      "retain_rank": 75,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": null
+    },
+    {
+      "id": "R12",
+      "name": "反转风控/50只波动率分配",
+      "family": "reverse_risk",
+      "scorer": "reverse_risk",
+      "rebalance_days": 10,
+      "positions": 50,
+      "retain_rank": 75,
+      "volume_min": 1.1,
+      "weighting": "inverse_vol",
+      "market_vol_target": null
+    },
+    {
+      "id": "R13",
+      "name": "反转风控/市场波动仓位控制",
+      "family": "reverse_risk",
+      "scorer": "reverse_risk",
+      "rebalance_days": 10,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": 0.15
+    },
+    {
+      "id": "R14",
+      "name": "趋势回撤/市场波动仓位控制",
+      "family": "trend_pullback",
+      "scorer": "trend_pullback",
+      "rebalance_days": 10,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": 0.15
+    },
+    {
+      "id": "R15",
+      "name": "状态切换/市场波动仓位控制",
+      "family": "regime_switch",
+      "scorer": "regime_switch",
+      "rebalance_days": 10,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": 0.15
+    },
+    {
+      "id": "R16",
+      "name": "5日反转/20日调仓",
+      "family": "reverse5",
+      "scorer": "reverse5",
+      "rebalance_days": 20,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": null
+    },
+    {
+      "id": "R17",
+      "name": "10日反转/5日调仓",
+      "family": "reverse10",
+      "scorer": "reverse10",
+      "rebalance_days": 5,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": null
+    },
+    {
+      "id": "R18",
+      "name": "60日原始趋势对照",
+      "family": "trend60",
+      "scorer": "trend60",
+      "rebalance_days": 10,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": null
+    },
+    {
+      "id": "R19",
+      "name": "原低换手方案/25只仓位控制",
+      "family": "P4",
+      "scorer": "P4",
+      "rebalance_days": 10,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 1.1,
+      "weighting": "equal",
+      "market_vol_target": 0.15
+    },
+    {
+      "id": "R20",
+      "name": "反转风控/取消放量门槛",
+      "family": "reverse_risk",
+      "scorer": "reverse_risk",
+      "rebalance_days": 10,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 0.0,
+      "weighting": "equal",
+      "market_vol_target": null
+    },
+    {
+      "id": "R21",
+      "name": "5日反转/取消放量门槛",
+      "family": "reverse5",
+      "scorer": "reverse5",
+      "rebalance_days": 10,
+      "positions": 25,
+      "retain_rank": 40,
+      "volume_min": 0.0,
+      "weighting": "equal",
+      "market_vol_target": null
+    }
+  ],
+  "paired_hypotheses": [
+    {
+      "id": "reverse_vs_chase",
+      "base": "R01",
+      "alternative": "R02",
+      "name": "5日反转相对5日追涨"
+    },
+    {
+      "id": "reverse5_10_vs_5",
+      "base": "R02",
+      "alternative": "R03",
+      "name": "5日反转：10日相对5日调仓"
+    },
+    {
+      "id": "reverse5_20_vs_10",
+      "base": "R03",
+      "alternative": "R16",
+      "name": "5日反转：20日相对10日调仓"
+    },
+    {
+      "id": "reverse10_10_vs_5",
+      "base": "R17",
+      "alternative": "R04",
+      "name": "10日反转：10日相对5日调仓"
+    },
+    {
+      "id": "skip_recent5",
+      "base": "R18",
+      "alternative": "R06",
+      "name": "中期趋势剔除最近5日"
+    },
+    {
+      "id": "trend_plus_pullback",
+      "base": "R06",
+      "alternative": "R07",
+      "name": "中期趋势加入回撤及风控"
+    },
+    {
+      "id": "reverse_plus_risk",
+      "base": "R03",
+      "alternative": "R08",
+      "name": "短期反转加入风控及流动性"
+    },
+    {
+      "id": "broader_holdings",
+      "base": "R08",
+      "alternative": "R11",
+      "name": "25只改为50只持仓"
+    },
+    {
+      "id": "inverse_volatility",
+      "base": "R11",
+      "alternative": "R12",
+      "name": "50只等权改为波动率倒数分配"
+    },
+    {
+      "id": "market_risk_reverse",
+      "base": "R08",
+      "alternative": "R13",
+      "name": "反转风控加入市场仓位控制"
+    },
+    {
+      "id": "market_risk_trend",
+      "base": "R07",
+      "alternative": "R14",
+      "name": "趋势回撤加入市场仓位控制"
+    },
+    {
+      "id": "market_risk_switch",
+      "base": "R10",
+      "alternative": "R15",
+      "name": "状态切换加入市场仓位控制"
+    },
+    {
+      "id": "market_risk_original",
+      "base": "C01",
+      "alternative": "R19",
+      "name": "原低换手方案加入市场仓位控制"
+    },
+    {
+      "id": "remove_volume_reverse_risk",
+      "base": "R08",
+      "alternative": "R20",
+      "name": "反转风控取消放量门槛"
+    },
+    {
+      "id": "remove_volume_reverse",
+      "base": "R03",
+      "alternative": "R21",
+      "name": "5日反转取消放量门槛"
+    },
+    {
+      "id": "state_switch_vs_trend",
+      "base": "R07",
+      "alternative": "R10",
+      "name": "均线状态切换相对固定趋势回撤"
+    }
+  ],
+  "pattern_consistency_rule": {
+    "definition": "sensitivity screen, not a statistical-significance or causal claim",
+    "mean_and_median_effect_same_sign": true,
+    "same_direction_fraction_min": 0.6666666666666666,
+    "every_calendar_year_mean_same_direction": true,
+    "20bps_mean_same_direction": true,
+    "mean_without_best_effect_window_same_direction": true,
+    "two_sided_reporting": true
+  },
+  "analysis": {
+    "cohorts": [
+      "original_14",
+      "all_15_viewed"
+    ],
+    "primary_cost_bps": 10,
+    "market_regimes": "realized full-window index return >5%, <-5%, otherwise sideways; descriptive only, never a trading input",
+    "signal_regime": "index close vs MA60 observed before window entry; also report separately",
+    "robustness": "year, realized market regime, median, win fraction, worst loss/drawdown, remove best window, 20bps costs, paired changes",
+    "held_out_years": "do not claim new held-out data; all 15 periods viewed in earlier rounds"
+  },
+  "attempts": {
+    "previous_rule_variants": 12,
+    "new_rule_variants": 21,
+    "cumulative_rule_variants": 33,
+    "earlier_weight_profiles": 8,
+    "interpretation": "counts describe these two rule rounds; do not erase earlier full-factor experiments"
+  },
+  "validation_status": "all existing 15 periods are research data; no new out-of-sample acceptance",
+  "no_production_change": true
+}

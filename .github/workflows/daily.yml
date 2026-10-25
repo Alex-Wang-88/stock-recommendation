@@ -262,6 +262,28 @@ jobs:
         shell: bash
         run: python scripts/build_public_site.py --data-dir data --source-dir site --output-dir _site
 
+      - name: Restore public cross-market source cache
+        if: ${{ !cancelled() && steps.build-public-site.outcome == 'success' }}
+        uses: actions/cache/restore@v6
+        with:
+          path: data/complexity
+          key: complexity-sources-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            complexity-sources-
+
+      - name: Refresh public cross-market daily snapshot
+        id: complexity-snapshot
+        if: ${{ !cancelled() && steps.build-public-site.outcome == 'success' }}
+        timeout-minutes: 8
+        run: python scripts/build_complexity_snapshot.py --output-dir _site --cache-dir data/complexity
+
+      - name: Cache successful cross-market source responses
+        if: ${{ !cancelled() && steps.complexity-snapshot.outcome == 'success' }}
+        uses: actions/cache/save@v6
+        with:
+          path: data/complexity
+          key: complexity-sources-${{ github.run_id }}-${{ github.run_attempt }}
+
       - name: Configure GitHub Pages
         if: ${{ !cancelled() && steps.build-public-site.outcome == 'success' }}
         uses: actions/configure-pages@v5

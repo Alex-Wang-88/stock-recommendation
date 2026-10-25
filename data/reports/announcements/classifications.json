@@ -1,29 +1,179 @@
 {
   "items": [
-    {"exchange":"SSE","announcement_id":"05580ba69a996a49f90b3e804fd61fec","category":"major_event","summary":"标题涉及安徽集友重大资产购买及关联交易的补充法律意见书。","confidence":0.91},
-    {"exchange":"SSE","announcement_id":"07b37b57e3796b13183968e14d095f1c","category":"major_event","summary":"标题表明公司涉及诉讼事项有进展，具体内容未由标题说明。","confidence":0.76},
-    {"exchange":"SSE","announcement_id":"0b0cb4658d15a340df8a9fa920816f66","category":"ignore","summary":"股票交易异常波动提示公告。","confidence":0.95},
-    {"exchange":"SSE","announcement_id":"0bbd01c1b89ecc5abff6b6797dce7e53","category":"major_event","summary":"标题涉及全资子公司购买资产及关联交易的核查意见。","confidence":0.74},
-    {"exchange":"SSE","announcement_id":"1d4cfa714361a9de0d9e7c2644b74544","category":"ignore","summary":"股票交易异常波动提示公告。","confidence":0.95},
-    {"exchange":"SSE","announcement_id":"2446536984f11a5097d192fb32ec5fb7","category":"uncertain","summary":"标题为向特定对象发行股票会后事项承诺函，具体事项未由标题说明。","confidence":0.61},
-    {"exchange":"SSE","announcement_id":"2ce9347f0eef890de7f9a048fde20b5e","category":"major_event","summary":"标题涉及集友股份重大资产购买及关联交易报告书（修订稿）。","confidence":0.92},
-    {"exchange":"SSE","announcement_id":"2dbffe27bbbc2e13b313dd29fb4aed62","category":"ignore","summary":"股票交易异常波动提示公告。","confidence":0.95},
-    {"exchange":"SSE","announcement_id":"356e4eeee87b774fba6a521d897ea3db","category":"major_event","summary":"标题涉及向控股孙公司提供借款及关联交易。","confidence":0.78},
-    {"exchange":"SSE","announcement_id":"36b8abf63257b95ab31c8318cb4dbeed","category":"major_event","summary":"标题涉及集友股份重大资产购买及关联交易报告书（修订稿）。","confidence":0.92},
-    {"exchange":"SSE","announcement_id":"38c547e07c41021a25b51130193e94fd","category":"ignore","summary":"标题为独立董事候选人的声明与承诺文件。","confidence":0.79},
-    {"exchange":"SSE","announcement_id":"4a193640707c08afd29201c92f66efe1","category":"ignore","summary":"股票交易异常波动提示公告。","confidence":0.95},
-    {"exchange":"SSE","announcement_id":"4b45831d00c47eb4afd7e6913914e5ad","category":"uncertain","summary":"标题提及新增年度日常关联交易预计，具体事项未由标题说明。","confidence":0.58},
-    {"exchange":"SSE","announcement_id":"56f794bbaf67bf3cffc1cbbac1ecf49e","category":"major_event","summary":"标题涉及集友股份重大资产购买及关联交易报告书修订说明。","confidence":0.91},
-    {"exchange":"SSE","announcement_id":"5cebd76df7973e39a9a4e164cda530c1","category":"major_event","summary":"标题涉及控股孙公司增资扩股、放弃优先认购权及关联交易。","confidence":0.77},
-    {"exchange":"SSE","announcement_id":"674c9cb4e423d0e42ccdf415fc27727b","category":"uncertain","summary":"标题提及增加年度日常关联交易预计额度，具体事项未由标题说明。","confidence":0.57},
-    {"exchange":"SSE","announcement_id":"6efe6db141c9136cce49ed9dfb17d940","category":"ignore","summary":"股票交易异常波动提示公告。","confidence":0.95},
-    {"exchange":"SSE","announcement_id":"7393c4a77a4f303140fcb34efc371117","category":"major_event","summary":"标题涉及向控股孙公司提供借款及关联交易的核查意见。","confidence":0.77},
-    {"exchange":"SSE","announcement_id":"8074a57f757d22a90830a8edd6982a62","category":"major_event","summary":"标题涉及公司提起诉讼事项的判决结果，未说明判决内容。","confidence":0.77},
-    {"exchange":"SSE","announcement_id":"8b5c6c08114973d7fa9e27cec5f082f3","category":"uncertain","summary":"标题涉及发行可转债相关的摊薄回报措施及承诺修订文件。","confidence":0.64},
-    {"exchange":"SSE","announcement_id":"8d1b92f1403f18b16a0ed0b7a29f929b","category":"ignore","summary":"标题为独立董事候选人提名相关的声明与承诺文件。","confidence":0.79},
-    {"exchange":"SSE","announcement_id":"8f8bc7357d7a8217d357d5cb5f4171d4","category":"uncertain","summary":"标题涉及发行可转债相关的摊薄回报措施及承诺文件。","confidence":0.64},
-    {"exchange":"SSE","announcement_id":"91d8f636b73bed33171e9acbc68dc429","category":"uncertain","summary":"标题为向特定对象发行股票会后事项承诺函，具体事项未由标题说明。","confidence":0.61},
-    {"exchange":"SSE","announcement_id":"9494c6365cce9bfd623aa91fcb9582f7","category":"uncertain","summary":"标题为向特定对象发行股票会后事项承诺函，具体事项未由标题说明。","confidence":0.61},
-    {"exchange":"SSE","announcement_id":"9b095f935ca2362f20794de8a0edb065","category":"major_event","summary":"标题表明公司及全资子公司涉及诉讼事项有进展，具体内容未由标题说明。","confidence":0.75}
+    {
+      "exchange": "SSE",
+      "announcement_id": "9c055130fceeb0621a82693a4cea2698",
+      "category": "major_event",
+      "summary": "标题涉及中交设计履行避免同业竞争承诺进展及相关资产受托管理事项。",
+      "confidence": 0.86
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "ac3d66d04b699fef13d70e5fbab750bd",
+      "category": "ignore",
+      "summary": "标题为奥比中光对外担保管理制度，属于制度类文件。",
+      "confidence": 0.97
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "b2d1198dabd758edfe5297dc9c7a2b4b",
+      "category": "ignore",
+      "summary": "标题涉及2026年度日常关联交易预计。",
+      "confidence": 0.91
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "b397554dd8324e5b5658e69773a5296d",
+      "category": "major_event",
+      "summary": "标题为博汇科技股票交易异常波动公告。",
+      "confidence": 0.96
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "bc255d7d2290048824542cbd5ff59b18",
+      "category": "major_event",
+      "summary": "标题为宏盛股份股票交易异常波动公告。",
+      "confidence": 0.96
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "bc9d90fb14bd0c6a04315f907e7c0cae",
+      "category": "major_event",
+      "summary": "标题涉及全资子公司购买资产及关联交易事项，未提供交易细节。",
+      "confidence": 0.83
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "c17577ab15b5253babcfb4a5e264b807",
+      "category": "uncertain",
+      "summary": "标题指向全资子公司诉讼进展，未说明案件结果或影响。",
+      "confidence": 0.62
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "c2cc0b2905ece4131ab4585324d81997",
+      "category": "ignore",
+      "summary": "标题涉及新增的2026年度日常关联交易预计。",
+      "confidence": 0.91
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "cfe6c6cd8273a5578b0e00ac02b7f7db",
+      "category": "major_event",
+      "summary": "标题为重大资产购买及关联交易的独立财务顾问报告修订稿。",
+      "confidence": 0.84
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "d562d011ff6155480b4f18e8a4a618cf",
+      "category": "major_event",
+      "summary": "标题涉及向特定对象发行股票的回报摊薄说明、填补措施及承诺。",
+      "confidence": 0.83
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "d76019940c628ccba5eb4519bfd44f61",
+      "category": "major_event",
+      "summary": "标题涉及变更避免与中交设计同业竞争承诺。",
+      "confidence": 0.77
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "dc20fb30ae10b777d1c750c7075c8ca7",
+      "category": "uncertain",
+      "summary": "标题涉及公司及下属公司累计诉讼、仲裁进展，未提供案件细节。",
+      "confidence": 0.61
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "dc6407b1be52e8c9899ded7acf56eb9f",
+      "category": "major_event",
+      "summary": "标题涉及对外投资设立基金及关联交易进展。",
+      "confidence": 0.82
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "def022d03f65a30e25b25b028900605f",
+      "category": "major_event",
+      "summary": "标题涉及控股股东及实际控制人拟变更避免同业竞争承诺。",
+      "confidence": 0.79
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "ef4e786f7f816cc8463eed89e540e3e6",
+      "category": "uncertain",
+      "summary": "标题为向特定对象发行股票会后事项承诺函，未展开具体事项。",
+      "confidence": 0.59
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "fa766e79ee0a4b7302db2ef5d4332bdd",
+      "category": "major_event",
+      "summary": "标题涉及发行股份购买资产并募集配套资金事项获贵州省国资委批复。",
+      "confidence": 0.94
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "fc740ce68ffbf4ad0f66abbe7ba082f9",
+      "category": "uncertain",
+      "summary": "标题涉及累计诉讼、仲裁事项，未提供案件细节。",
+      "confidence": 0.61
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "018f4dbdb0a7c75e44340f241678c511",
+      "category": "ignore",
+      "summary": "标题为英诺特独立董事候选人声明与承诺。",
+      "confidence": 0.97
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "0af0c1d1fd832b29ec4ca99c7edfce32",
+      "category": "major_event",
+      "summary": "标题涉及控股股东关于解决和避免同业竞争的承诺。",
+      "confidence": 0.72
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "1c3db9b0cf5950bc7ec205e28b3c5ed0",
+      "category": "major_event",
+      "summary": "标题为南宁百货股票交易异常波动公告。",
+      "confidence": 0.96
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "228e2fd8c005a7458c23572c62d9c20a",
+      "category": "major_event",
+      "summary": "标题为会稽山股票交易异常波动公告。",
+      "confidence": 0.96
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "28c14eb6beb7cc12a589a1414efa7465",
+      "category": "uncertain",
+      "summary": "标题指向公司诉讼进展，未说明案件性质、结果或影响。",
+      "confidence": 0.58
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "2e6741a0a40cf348c71281236fdf6ecb",
+      "category": "ignore",
+      "summary": "标题为氯碱化工独立董事候选人声明与承诺。",
+      "confidence": 0.97
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "3e8150e17b8f66935a0dc8f36cce273a",
+      "category": "major_event",
+      "summary": "标题为锡华科技股票交易异常波动公告。",
+      "confidence": 0.96
+    },
+    {
+      "exchange": "SSE",
+      "announcement_id": "44e85c4d3ab5f5e5bf9e09efb5cb6232",
+      "category": "ignore",
+      "summary": "标题为英诺特独立董事提名人声明与承诺。",
+      "confidence": 0.97
+    }
   ]
 }
