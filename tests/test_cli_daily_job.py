@@ -80,6 +80,7 @@ def test_intraday_cli_does_not_start_sync(monkeypatch):
 
 def test_missing_market_archive_reports_failure_without_network(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "intraday_sync_block_reason", lambda: None)
+    monkeypatch.setattr("recommend.sync.intraday_sync_block_reason", lambda: None)
     config = replace(
         AppConfig(),
         archive_db=tmp_path / "archive.duckdb",

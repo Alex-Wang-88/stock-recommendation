@@ -15,6 +15,8 @@ from recommend.config import AppConfig, MarketConfig
 def test_manual_sync_runs_all_stages_and_persists_local_report(
     tmp_path, bars_factory, parquet_writer, monkeypatch
 ):
+    # Exercise orchestration independently of the real clock's trading window.
+    monkeypatch.setattr(sync, "intraday_sync_block_reason", lambda: None)
     daily = tmp_path / "daily.parquet"
     parquet_writer(
         bars_factory(n_days=300, symbols=("000001", "000002"), start="2025-01-01"),
