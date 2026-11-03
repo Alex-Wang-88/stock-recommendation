@@ -1,0 +1,47 @@
+{
+  "protocol_hash": "71f48132e6a849ae7796eebf0c7b44ce2424af143d835ccc6b791c14805c4a11",
+  "cohorts": [
+    {
+      "as_of": "2026-11-02",
+      "recorded_at": "2026-11-03T09:13:48.550592+08:00",
+      "protocol_hash": "71f48132e6a849ae7796eebf0c7b44ce2424af143d835ccc6b791c14805c4a11",
+      "signal_hash": "60fff0ba300374f692c92649b6d3f49d8a16855e00306ab5e5ab98569735604e",
+      "picks": [],
+      "status": "waiting_entry",
+      "entry_day": null,
+      "exit_day": null,
+      "net_return": null,
+      "benchmark_return": null,
+      "excess": null,
+      "pool_return": null,
+      "pool_excess": null,
+      "fees": 0.0,
+      "filled": 0,
+      "pending_exits": 0,
+      "issues": [],
+      "positions": []
+    }
+  ],
+  "summary": {
+    "signals": 1,
+    "matured": 0,
+    "paired": 0,
+    "data_gaps": 0,
+    "blocked": 0,
+    "pending": 1,
+    "mean_net_return": null,
+    "mean_excess": null,
+    "mean_pool_excess": null,
+    "win_rate": null,
+    "worst_cohort": null,
+    "acceptance": "积累样本中"
+  },
+  "benchmark_source": "https://www.csindex.com.cn/csindex-home/perf/index-perf",
+  "limitations": [
+    "每日批次有重叠，不拼接成年化或连续账户收益。",
+    "费用为单边20bps且每笔至少5元的统一情景；日线模拟不含盘口冲击。",
+    "股票与指数均为价格收益，未计现金分红；公司行动异常留待核对。",
+    "同池对照使用分数单位，不含整手及最低费用，属于近似参考。",
+    "达到60批成熟样本只是观察门槛，不代表统计显著或未来收益保证。"
+  ]
+}

@@ -41,7 +41,7 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 echo [3/3] Installing project dependencies...
-".venv\Scripts\python.exe" -m pip install -e ".[web,free-data]"
+".venv\Scripts\python.exe" -m pip install -c config/runtime-constraints.txt -e .
 if errorlevel 1 (
     echo Dependency installation failed. Check the network and try again.
     exit /b 1

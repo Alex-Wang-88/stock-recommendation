@@ -1,0 +1,27 @@
+name: Offline code checks
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      OMP_NUM_THREADS: '6'
+      OPENBLAS_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      NUMEXPR_NUM_THREADS: '6'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -c config/runtime-constraints.txt -e '.[dev,free-data]'
+      - run: python -m pytest tests -q
+      - run: python -m ruff check src tests app.py
+      - run: node --test tests/complexity_frontend.test.cjs tests/daily_frontend.test.cjs

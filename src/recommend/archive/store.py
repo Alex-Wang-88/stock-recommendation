@@ -252,7 +252,7 @@ class ArchiveStore:
     def __init__(self, path: str | Path = "data/archive.duckdb") -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = duckdb.connect(str(self.path))
+        self.conn = duckdb.connect(str(self.path), config={"threads": 6})
         self.ensure_schema()
 
     def close(self) -> None:

@@ -54,6 +54,9 @@ def test_manual_sync_runs_all_stages_and_persists_local_report(
         "snapshot_all",
         lambda *_args, **_kwargs: [BackfillResult(task="sector", skipped=1)],
     )
+    monkeypatch.setattr(
+        sync, "sync_public_announcements", lambda *_a, **_k: ("done", "test announcements", "")
+    )
 
     events = []
     result = sync.run_sync_all(config, progress=events.append)
@@ -65,13 +68,15 @@ def test_manual_sync_runs_all_stages_and_persists_local_report(
         "dragon-tiger",
         "margin",
         "sector",
+        "announcements",
         "recommendation",
         "validation",
     ]
     assert result.screen is not None
     assert result.report_path is not None and result.report_path.exists()
     assert result.csv_path is not None and result.csv_path.exists()
-    assert result.forward_record_path is not None and result.forward_record_path.exists()
+    # Old synthetic dates may update reports, never manufacture a forward signal.
+    assert result.forward_record_path is None
     assert result.evaluation_path is not None and result.evaluation_path.exists()
     assert result.evaluation_summary_path is not None and result.evaluation_summary_path.exists()
     assert [event.fraction for event in events] == sorted(event.fraction for event in events)

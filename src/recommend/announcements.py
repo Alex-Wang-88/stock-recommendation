@@ -179,9 +179,12 @@ def _iso_date(value: object) -> str | None:
             timestamp = float(value)
             if timestamp > 10_000_000_000:
                 timestamp /= 1000
-            return datetime.fromtimestamp(timestamp, UTC).astimezone(
-                ZoneInfo("Asia/Shanghai")
-            ).date().isoformat()
+            return (
+                datetime.fromtimestamp(timestamp, UTC)
+                .astimezone(ZoneInfo("Asia/Shanghai"))
+                .date()
+                .isoformat()
+            )
         except (OverflowError, OSError, ValueError):
             return None
     match = re.search(r"(20\d{2})[-/]?(\d{2})[-/]?(\d{2})", str(value))
@@ -210,9 +213,8 @@ def _official_url(exchange: str, value: object) -> str:
     elif not raw.startswith(("https://", "http://")):
         raw = urljoin(base, raw)
     host = (urlparse(raw).hostname or "").lower()
-    allowed = (
-        host.endswith("cninfo.com.cn")
-        or (host.endswith("sse.com.cn") if exchange == "SSE" else host.endswith("szse.cn"))
+    allowed = host.endswith("cninfo.com.cn") or (
+        host.endswith("sse.com.cn") if exchange == "SSE" else host.endswith("szse.cn")
     )
     return raw if allowed else ""
 
@@ -225,12 +227,10 @@ def _stable_id(
         if value not in (None, ""):
             return str(value)
     identity = url or f"{symbol}|{day}|{title}"
-    return hashlib.sha256(f"{exchange}|{identity}".encode("utf-8")).hexdigest()[:32]
+    return hashlib.sha256(f"{exchange}|{identity}".encode()).hexdigest()[:32]
 
 
-def _sse_rows(
-    client: ThrottledClient, start: str, end: str
-) -> list[dict[str, Any]]:
+def _sse_rows(client: ThrottledClient, start: str, end: str) -> list[dict[str, Any]]:
     all_rows: list[dict[str, Any]] = []
     for page_no in range(1, MAX_PAGES_PER_EXCHANGE + 1):
         params = {
@@ -333,11 +333,7 @@ def _cninfo_rows(client: ThrottledClient, start: str, end: str) -> list[dict[str
         if not isinstance(rows, list):
             raise FetchError("巨潮资讯公告响应缺少 announcements 列表")
         all_rows.extend(row for row in rows if isinstance(row, dict))
-        dates = [
-            parsed
-            for row in rows
-            if (parsed := _iso_date(row.get("announcementTime")))
-        ]
+        dates = [parsed for row in rows if (parsed := _iso_date(row.get("announcementTime")))]
         if dates and min(dates) < start:
             break
         total_pages = int(payload.get("totalpages") or 0)
@@ -359,9 +355,7 @@ def _normalize_row(
     )
     if symbol is None:
         return None
-    exchange_prefixes = (
-        SSE_A_SHARE_PREFIXES if exchange == "SSE" else SZSE_A_SHARE_PREFIXES
-    )
+    exchange_prefixes = SSE_A_SHARE_PREFIXES if exchange == "SSE" else SZSE_A_SHARE_PREFIXES
     if not symbol.startswith(exchange_prefixes):
         return None
     if exchange == "SSE":
@@ -434,9 +428,7 @@ def _start_date(archive: ArchiveStore, exchange: str, end: date) -> date:
     return start
 
 
-def _store_success(
-    archive: ArchiveStore, exchange: str, end: str, sync_run_id: str
-) -> None:
+def _store_success(archive: ArchiveStore, exchange: str, end: str, sync_run_id: str) -> None:
     archive.conn.execute(
         "insert or replace into announcement_sync_state "
         "(exchange, last_success_date, updated_at, sync_run_id) "
@@ -513,10 +505,7 @@ def sync_public_announcements(
                 normalized = [
                     record
                     for row in rows
-                    if (
-                        record := _normalize_row(exchange, row, start_text, end_text)
-                    )
-                    is not None
+                    if (record := _normalize_row(exchange, row, start_text, end_text)) is not None
                 ]
                 if normalized:
                     frame = pd.DataFrame(normalized)
@@ -606,7 +595,9 @@ def apply_classifications(
                 stored_category = category if confidence >= 0.65 else "uncertain"
                 status = "classified"
                 signal = SIGNALS[stored_category]
-                stored_summary = summary if stored_category != "uncertain" else "标题信息不足，未推断事件影响"
+                stored_summary = (
+                    summary if stored_category != "uncertain" else "标题信息不足，未推断事件影响"
+                )
                 applied += 1
             conn.execute(
                 "update company_announcements set category = ?, signal = ?, summary = ?, "

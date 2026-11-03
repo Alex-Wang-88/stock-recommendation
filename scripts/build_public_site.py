@@ -331,6 +331,10 @@ def _report_notes(report_path: Path | None) -> tuple[list[str], int | None]:
 
 
 def build_site(data_dir: Path, source_dir: Path, output_dir: Path) -> dict[str, object]:
+    if (data_dir / "reports/daily-v2/latest.json").is_file():
+        from recommend.daily_job import public_daily_payload
+
+        return public_daily_payload(data_dir, source_dir, output_dir)
     reports_dir = data_dir / "reports"
     latest = _latest_recommendation_report(reports_dir) if reports_dir.is_dir() else None
     if latest:
@@ -383,6 +387,10 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, default=ROOT / "_site")
     args = parser.parse_args()
     payload = build_site(args.data_dir, args.source_dir, args.output_dir)
+    if payload.get("schema_version") == 3:
+        print(f"Daily v2 site generated: as_of={payload['as_of']}, "
+              f"picks={len(payload['selection']['picks'])}, state={payload['state']}")
+        return 0
     print(
         "Public site generated: "
         f"as_of={payload['as_of'] or 'none'}, "

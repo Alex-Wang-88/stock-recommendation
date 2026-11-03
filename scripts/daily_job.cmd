@@ -31,7 +31,7 @@ if not exist "%PROJECT%\logs" mkdir "%PROJECT%\logs"
 echo. >> "%LOG%"
 echo ==== run at %DATE% %TIME% ==== >> "%LOG%"
 
-"%PROJECT%\.venv\Scripts\python.exe" -m recommend.cli daily-job --preset low-position >> "%LOG%" 2>&1
+"%PROJECT%\.venv\Scripts\python.exe" scripts\daily_picks.py --workers 6 >> "%LOG%" 2>&1
 set "CODE=%ERRORLEVEL%"
 
 echo exit=%CODE% >> "%LOG%"

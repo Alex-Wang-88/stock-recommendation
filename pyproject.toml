@@ -4,8 +4,8 @@ version = "0.1.0"
 description = "A 股股票推荐系统（独立于 quantitative 量化项目）"
 requires-python = ">=3.11"
 dependencies = [
-    "duckdb>=1.1",
-    "pandas>=2.2",
+    "duckdb>=1.5.5,<2",
+    "pandas>=2.2,<3.1",
     "requests>=2.32",
     "tzdata>=2024.1",
 ]

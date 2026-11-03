@@ -140,7 +140,7 @@ class MarketStore:
 
     def __init__(self, path: str | Path = "data/market/daily.parquet") -> None:
         self.path = Path(path)
-        self.conn = duckdb.connect()
+        self.conn = duckdb.connect(config={"threads": 6})
 
     def __enter__(self) -> MarketStore:
         return self
@@ -386,12 +386,12 @@ class MarketStore:
                         select {projections} from _incoming
                     ) to '{temporary.as_posix()}' (format parquet, compression zstd)
                     """
-                )
+                ).fetchall()
             else:
                 self.conn.execute(
                     f"copy (select {projections} from _incoming) "
                     f"to '{temporary.as_posix()}' (format parquet, compression zstd)"
-                )
+                ).fetchall()
         finally:
             self.conn.unregister("_incoming")
         os.replace(temporary, self.path)

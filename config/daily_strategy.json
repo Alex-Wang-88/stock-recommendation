@@ -1,0 +1,44 @@
+{
+  "version": "daily-v2-20261102",
+  "name": "趋势回撤 · 每日五选",
+  "locked_on": "2026-11-02",
+  "selection_count": 5,
+  "holding_sessions": 20,
+  "weights": {"trend": 0.4, "stability": 0.4, "pullback": 0.2},
+  "minimum_history": 250,
+  "minimum_price": 3.0,
+  "minimum_amount_20": 100000000.0,
+  "maximum_per_industry": 1,
+  "minimum_market_breadth": 0.4,
+  "minimum_quote_coverage": 0.95,
+  "minimum_bar_coverage": 0.95,
+  "initial_capital": 100000.0,
+  "lot_size": 100,
+  "cost_bps_per_side": 20.0,
+  "minimum_cost_per_order": 5.0,
+  "primary_benchmark": "000985",
+  "benchmark_name": "中证全指价格指数",
+  "formula": {
+    "trend": "cross-sectional percentile of close[t-20]/close[t-120]-1",
+    "stability": "cross-sectional percentile of negative 60-session daily-return population standard deviation",
+    "pullback": "cross-sectional percentile of negative 5-session close return",
+    "eligibility": "Shanghai/Shenzhen main board; current dated non-ST name; 250 bars; >=365 calendar days listed; positive OHLC/volume/amount; close >=3; 20-session average amount >=100m CNY; close > MA120; positive trend",
+    "market_gate": "fraction of complete main-board stocks above MA120 >=40%; otherwise zero new picks",
+    "missing": "exclude incomplete stocks; never redistribute scoring weights",
+    "industry": "at most one per known industry; all unknown industries share one bucket"
+  },
+  "execution": {
+    "entry": "first market session after the frozen signal, open; do not buy at an open >=9.5% above prior close or without valid trading volume",
+    "exit": "20th session including entry, close; defer exits without trading volume or at a close <=-9.5% of prior close",
+    "unfilled": "one entry attempt; unfilled allocation stays cash; no replacement using future data",
+    "adjustment": "signals use qfq history; execution uses dated unadjusted quote snapshots; prior-close discontinuity >0.5% marks corporate-action review and prevents acceptance until resolved; dividends are not credited",
+    "pool_control": "same signal-day eligible pool, equal allocations, fractional units, same cost bps; excludes minimum-order fee and lots, explicitly approximate",
+    "cohorts": "each daily signal is an independent 100000 CNY cohort; daily cohorts overlap and must never be compounded as one portfolio"
+  },
+  "acceptance": {
+    "primary_metric": "mean matured 20-session net cohort return minus same-period index open-to-close return >0",
+    "secondary_metric": "mean matured net return minus same-pool approximate control >0",
+    "minimum_mature_cohorts_for_observation": 60,
+    "meaning": "observation threshold only, not statistical proof; overlapping cohorts are dependent; disclose losses, fill failures, pending exits and missing benchmarks"
+  }
+}

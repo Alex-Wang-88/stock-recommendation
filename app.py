@@ -124,7 +124,8 @@ def inject_style() -> None:
             gap: 8px; margin: .55rem 0 .85rem;
         }
         .top-summary-item, .candidate-status-item, .detail-stat-item {
-            min-width: 0; background: linear-gradient(135deg, rgba(14, 18, 35, .98), rgba(17, 24, 43, .92));
+            min-width: 0;
+            background: linear-gradient(135deg, rgba(14, 18, 35, .98), rgba(17, 24, 43, .92));
             border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px;
         }
         .top-summary-label, .candidate-status-label, .detail-stat-label {
@@ -136,7 +137,9 @@ def inject_style() -> None:
         }
         .detail-stat-value.positive { color: var(--price-up); }
         .detail-stat-value.negative { color: var(--price-down); }
-        .top-summary-note { color: var(--muted); display: block; font-size: .72rem; margin-top: 3px; }
+        .top-summary-note {
+            color: var(--muted); display: block; font-size: .72rem; margin-top: 3px;
+        }
         .candidate-industry-line { color: var(--muted); font-size: .82rem; line-height: 1.8; }
         .candidate-industry-chip {
             display: inline-block; background: rgba(96, 165, 250, .10); border: 1px solid #263c5e;
@@ -376,7 +379,11 @@ def render_candlestick_chart(bars: pd.DataFrame, symbol: str, name: str) -> None
     ma_periods = (5, 10, 20, 60)
     ma_colors = {5: "#f59e0b", 10: "#a78bfa", 20: "#60a5fa", 60: "#22d3ee"}
     moving_averages = {
-        period: data["close"].rolling(period, min_periods=period).mean().tail(60).reset_index(drop=True)
+        period: data["close"]
+        .rolling(period, min_periods=period)
+        .mean()
+        .tail(60)
+        .reset_index(drop=True)
         for period in ma_periods
     }
     visible = data.tail(60).reset_index(drop=True)
@@ -410,13 +417,13 @@ def render_candlestick_chart(bars: pd.DataFrame, symbol: str, name: str) -> None
         value = high - (high - low) * tick / 3
         y = y_pos(value)
         svg.append(
-            f'<line x1="{margin_left}" y1="{y:.1f}" x2="{width-margin_right}" '
+            f'<line x1="{margin_left}" y1="{y:.1f}" x2="{width - margin_right}" '
             f'y2="{y:.1f}" stroke="#26344d" stroke-width="1"/>'
         )
         svg.append(
-            f'<text x="{margin_left-8}" y="{y+4:.1f}" text-anchor="end" '
+            f'<text x="{margin_left - 8}" y="{y + 4:.1f}" text-anchor="end" '
             'fill="#94a3b8" font-size="11">'
-            f'{value:.2f}</text>'
+            f"{value:.2f}</text>"
         )
 
     ma_points: dict[int, list[str]] = {period: [] for period in ma_periods}
@@ -432,7 +439,7 @@ def render_candlestick_chart(bars: pd.DataFrame, symbol: str, name: str) -> None
             f'stroke="{color}" stroke-width="1.2"/>'
         )
         svg.append(
-            f'<rect x="{x-candle_width/2:.1f}" y="{body_y:.1f}" '
+            f'<rect x="{x - candle_width / 2:.1f}" y="{body_y:.1f}" '
             f'width="{candle_width:.1f}" height="{body_h:.1f}" fill="{color}"/>'
         )
         for period in ma_periods:
@@ -462,9 +469,9 @@ def render_candlestick_chart(bars: pd.DataFrame, symbol: str, name: str) -> None
         )
     svg.extend(
         [
-            f'<text x="{margin_left}" y="{height-10}" fill="#94a3b8" '
+            f'<text x="{margin_left}" y="{height - 10}" fill="#94a3b8" '
             f'font-size="11">{first_day}</text>',
-            f'<text x="{width-margin_right}" y="{height-10}" text-anchor="end" '
+            f'<text x="{width - margin_right}" y="{height - 10}" text-anchor="end" '
             f'fill="#94a3b8" font-size="11">{last_day}</text>',
             "</svg>",
         ]
@@ -476,7 +483,10 @@ def render_stock_detail(row: pd.Series, result, config: AppConfig, rank: int) ->
     symbol = safe_text(row.get("symbol"), "未知代码")
     name = safe_text(row.get("name"), "未同步名称")
     industry = safe_text(row.get("industry"), "未同步")
-    st.markdown(f"### {escape(name)} <span class='stock-symbol'>{escape(symbol)}</span>", unsafe_allow_html=True)
+    st.markdown(
+        f"### {escape(name)} <span class='stock-symbol'>{escape(symbol)}</span>",
+        unsafe_allow_html=True,
+    )
     tags = safe_text(row.get("theme_tags"), "未归因")
     st.caption(f"排名 {rank:02d} · 行业 {escape(industry)} · 题材归因 {escape(tags)}")
 
@@ -499,7 +509,8 @@ def render_stock_detail(row: pd.Series, result, config: AppConfig, rank: int) ->
     stats_html = ["<div class='detail-stat-grid'>"]
     stats_html.extend(
         "<div class='detail-stat-item'><span class='detail-stat-label'>"
-        f"{escape(label)}</span><strong class='detail-stat-value {tone}'>{escape(value)}</strong></div>"
+        f"{escape(label)}</span><strong class='detail-stat-value {tone}'>"
+        f"{escape(value)}</strong></div>"
         for label, value, tone in detail_stats
     )
     stats_html.append("</div>")
@@ -525,24 +536,76 @@ def render_stock_detail(row: pd.Series, result, config: AppConfig, rank: int) ->
             height=min(280, 42 + 36 * len(result.weights)),
         )
         detail_columns = (
-            "ret_since_924", "ret_20", "ret_60", "relative_ret_20", "relative_ret_60",
-            "volume_trend_20", "theme_heat_max", "theme_days_20", "lhb_net_buy_rel",
-            "main_net_inflow", "turnover_value_20", "close_position_250", "dist_to_52w_high",
-            "realized_vol_20", "downside_vol_20", "max_drawdown_60", "volatility_value",
-            "drawdown_value", "downside_volatility_value", "pe_ttm", "pe_industry_value",
-            "eps_ttm", "roe_avg", "gross_profit_margin", "net_profit_margin", "yoy_net_income",
-            "yoy_eps_basic", "revenue_yoy", "profit_growth_acceleration", "eps_growth_acceleration",
-            "positive_profit_streak", "positive_growth_streak", "current_ratio", "quick_ratio",
-            "cash_ratio", "liability_to_asset", "asset_to_equity", "ebit_to_interest", "cfo_to_or",
-            "cfo_to_np", "cfo_to_gr", "financial_safety_value", "industry_score", "industry_leader_score",
+            "ret_since_924",
+            "ret_20",
+            "ret_60",
+            "relative_ret_20",
+            "relative_ret_60",
+            "volume_trend_20",
+            "theme_heat_max",
+            "theme_days_20",
+            "lhb_net_buy_rel",
+            "main_net_inflow",
+            "turnover_value_20",
+            "close_position_250",
+            "dist_to_52w_high",
+            "realized_vol_20",
+            "downside_vol_20",
+            "max_drawdown_60",
+            "volatility_value",
+            "drawdown_value",
+            "downside_volatility_value",
+            "pe_ttm",
+            "pe_industry_value",
+            "eps_ttm",
+            "roe_avg",
+            "gross_profit_margin",
+            "net_profit_margin",
+            "yoy_net_income",
+            "yoy_eps_basic",
+            "revenue_yoy",
+            "profit_growth_acceleration",
+            "eps_growth_acceleration",
+            "positive_profit_streak",
+            "positive_growth_streak",
+            "current_ratio",
+            "quick_ratio",
+            "cash_ratio",
+            "liability_to_asset",
+            "asset_to_equity",
+            "ebit_to_interest",
+            "cfo_to_or",
+            "cfo_to_np",
+            "cfo_to_gr",
+            "financial_safety_value",
+            "industry_score",
+            "industry_leader_score",
         )
         detail_rows = []
         percent_columns = {
-            "ret_since_924", "ret_20", "ret_60", "dist_to_52w_high", "ma20_dev", "ma60_dev",
-            "lhb_net_buy_rel", "margin_rz_chg_20", "roe_avg", "gross_profit_margin", "net_profit_margin",
-            "yoy_net_income", "yoy_eps_basic", "revenue_yoy", "profit_growth_acceleration",
-            "eps_growth_acceleration", "relative_ret_20", "relative_ret_60", "liability_to_asset",
-            "cfo_to_or", "cfo_to_np", "cfo_to_gr", "downside_vol_20",
+            "ret_since_924",
+            "ret_20",
+            "ret_60",
+            "dist_to_52w_high",
+            "ma20_dev",
+            "ma60_dev",
+            "lhb_net_buy_rel",
+            "margin_rz_chg_20",
+            "roe_avg",
+            "gross_profit_margin",
+            "net_profit_margin",
+            "yoy_net_income",
+            "yoy_eps_basic",
+            "revenue_yoy",
+            "profit_growth_acceleration",
+            "eps_growth_acceleration",
+            "relative_ret_20",
+            "relative_ret_60",
+            "liability_to_asset",
+            "cfo_to_or",
+            "cfo_to_np",
+            "cfo_to_gr",
+            "downside_vol_20",
         }
         for column in detail_columns:
             if column not in result.frame.columns:
@@ -575,7 +638,9 @@ def render_stock_cards(result, config: AppConfig) -> None:
 
     frame = result.frame.reset_index(drop=True).copy()
     frame["_rank"] = range(1, len(frame) + 1)
-    frame["industry"] = frame.get("industry", pd.Series(index=frame.index, dtype="object")).fillna("未同步")
+    frame["industry"] = frame.get("industry", pd.Series(index=frame.index, dtype="object")).fillna(
+        "未同步"
+    )
     frame["operation_signal"] = frame.get(
         "operation_signal", pd.Series(index=frame.index, dtype="object")
     ).fillna("未生成")
@@ -601,9 +666,11 @@ def render_stock_cards(result, config: AppConfig) -> None:
 
     all_industries = sorted(frame["industry"].replace("", "未同步").unique().tolist())
     all_signals = sorted(frame["operation_signal"].unique().tolist())
-    search = st.text_input(
-        "搜索代码 / 名称", placeholder="输入代码或名称", key="candidate-search"
-    ).strip().lower()
+    search = (
+        st.text_input("搜索代码 / 名称", placeholder="输入代码或名称", key="candidate-search")
+        .strip()
+        .lower()
+    )
     with st.expander("更多筛选：行业与操作信号", expanded=False):
         industry_filter = st.selectbox("行业", ["全部"] + all_industries, key="candidate-industry")
         signal_filter = st.selectbox("操作信号", ["全部"] + all_signals, key="candidate-signal")
@@ -810,15 +877,9 @@ def render_forward_validation(config: AppConfig) -> None:
             }
         )
         return_columns = [
-            column
-            for column in ("推荐平均收益", "全市场平均收益", "平均超额")
-            if column in display
+            column for column in ("推荐平均收益", "全市场平均收益", "平均超额") if column in display
         ]
-        format_columns = [
-            column
-            for column in (*return_columns, "超额波动")
-            if column in display
-        ]
+        format_columns = [column for column in (*return_columns, "超额波动") if column in display]
         styled_display = display.style.map(a_share_return_style, subset=return_columns).format(
             {column: "{:+.2%}" for column in format_columns},
             na_rep="",
@@ -927,9 +988,7 @@ def main() -> None:
     if synced is not None and synced.screen is not None:
         result = synced.screen
     elif background_snapshot.get("running"):
-        st.info(
-            "启动同步正在后台执行；首屏已打开，推荐清单会在同步完成后自动刷新。"
-        )
+        st.info("启动同步正在后台执行；首屏已打开，推荐清单会在同步完成后自动刷新。")
         return
     else:
         try:

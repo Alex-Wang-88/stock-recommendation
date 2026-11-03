@@ -11,6 +11,18 @@ import pandas as pd
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def no_live_network(monkeypatch):
+    """A unit test with stale mocks must fail locally instead of hitting live markets."""
+    import socket
+
+    def blocked(*_args, **_kwargs):
+        raise AssertionError("Live network is forbidden in unit tests; mock the source")
+
+    monkeypatch.setattr(socket.socket, "connect", blocked)
+    monkeypatch.setattr(socket, "create_connection", blocked)
+
+
 def make_bars(
     n_days: int = 300,
     symbols: tuple[str, ...] = ("000001", "000002"),
