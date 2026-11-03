@@ -7,6 +7,9 @@
   const color = n => Number.isFinite(n) ? n > 0 ? "positive" : n < 0 ? "negative" : "" : "";
   const statuses = {waiting_entry:"等待入场日留证",holding:"观察期内",matured:"已完成",exit_blocked:"退出受限，继续跟踪",data_gap:"数据待核对"};
   let payload = null;
+  let refreshing = false;
+  let lastRefreshAt = 0;
+  let selectedCohort = null;
   function spark(history) {
     const values = (history || []).map(p => p.close).filter(Number.isFinite);
     if (values.length < 2) return "";
@@ -57,11 +60,15 @@
     $("validation-method").innerHTML = `<p>固定基准：${escape(p.benchmark_name)}，实际入场日开盘至实际全部退出日收盘。超额＝批次净收益−同期指数收益，单位为百分点。</p><p>平均同池超额：${pct(summary.mean_pool_excess)}；最差已完成批次：${pct(summary.worst_cohort)}。</p><ul>${validation.limitations.map(t=>`<li>${escape(t)}</li>`).join("")}</ul>`;
     $("version").textContent = `${p.version} · 无大模型依赖`;
     $("load-error").hidden = true;
+    if(selectedCohort) detail(selectedCohort);
   }
   function detail(hash) {
     const c=payload.validation.cohorts.find(row=>row.signal_hash===hash);
-    if(!c) return;
+    if(!c){selectedCohort=null;$("cohort-detail").innerHTML="";return;}
+    selectedCohort = hash;
     $("cohort-detail").innerHTML = `<div class="cohort-detail"><h3>${escape(c.as_of)} · ${escape(statuses[c.status])}</h3><p>入场：${escape(c.entry_day || "等待次日")} · 目标退出：${escape(c.target_exit_day || "观察期未走完")} · 实际退出：${escape(c.exit_day || "尚未完成")}</p><p>实际模拟成交 ${c.filled} 只 · 已记费用 ${number(c.fees,2)} 元 · 同池近似超额 ${pct(c.pool_excess)}</p><ul>${(c.positions||[]).map(pos=>`<li>${escape(pos.symbol)}：${pos.quantity} 股；${escape(pos.reason)}；${pos.exit_day ? `已于 ${escape(pos.exit_day)} 退出` : escape(pos.status)}</li>`).join("")}${(c.issues||[]).map(issue=>`<li>${escape(issue)}</li>`).join("")}</ul><p>冻结指纹 <code>${escape(c.signal_hash)}</code></p></div>`;
+    const names = c.picks.length ? c.picks.map(p=>`${escape(p.name || p.symbol)}（${escape(p.symbol)}）`).join("、") : "本期为空仓观察";
+    $("cohort-detail").innerHTML += `<div class="cohort-detail"><p>当期候选：${names}</p><a class="text-link" href="signals/${encodeURIComponent(c.as_of)}__${encodeURIComponent((c.protocol_hash || payload.protocol_hash).slice(0,16))}.json" download>下载该期冻结推荐 ↗</a></div>`;
   }
   const tabs=Array.from(document.querySelectorAll("[data-tab]"));
   function activate(tab) {
@@ -69,13 +76,24 @@
   }
   tabs.forEach((tab,i)=>{tab.addEventListener("click",()=>activate(tab));tab.addEventListener("keydown",event=>{if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;event.preventDefault();const next=event.key==="Home"?0:event.key==="End"?tabs.length-1:(i+(event.key==="ArrowRight"?1:-1)+tabs.length)%tabs.length;activate(tabs[next]);tabs[next].focus();});});
   $("cohort-rows").addEventListener("click",event=>{const button=event.target.closest("[data-cohort]");if(button)detail(button.dataset.cohort);});
-  async function refresh() {
+  async function refresh({silent = false} = {}) {
+    if(refreshing) return;
+    refreshing = true;
+    lastRefreshAt = Date.now();
     const button=$("refresh");button.disabled=true;button.textContent="读取中…";
     try {const response=await fetch(`data.json?at=${Date.now()}`,{cache:"no-store"});if(!response.ok)throw new Error(`读取失败 HTTP ${response.status}`);render(await response.json());}
-    catch(error){$("load-error").textContent=`数据刷新失败：${error.message}。已加载的快照仍保留。`;$("load-error").hidden=false;}
-    finally{button.disabled=false;button.textContent="刷新数据";}
+    catch(error){if(!silent || !payload){$("load-error").textContent=`数据刷新失败：${error.message}。已加载的快照仍保留。`;$("load-error").hidden=false;}}
+    finally{refreshing=false;button.disabled=false;button.textContent="刷新数据";}
   }
-  $("refresh").addEventListener("click",refresh);
-  try {if(window.DAILY_PICKS)render(window.DAILY_PICKS);else refresh();}
+  function refreshOnReturn() {
+    if(!document.hidden && Date.now() - lastRefreshAt >= 60000){
+      if(payload) render(payload);
+      refresh({silent:true});
+    }
+  }
+  $("refresh").addEventListener("click",()=>refresh());
+  document.addEventListener("visibilitychange",refreshOnReturn);
+  window.addEventListener("focus",refreshOnReturn);
+  try {if(window.DAILY_PICKS)render(window.DAILY_PICKS);refresh({silent:!!payload});}
   catch(error){$("notice").textContent=error.message;$("notice").className="notice warn";}
 })();
